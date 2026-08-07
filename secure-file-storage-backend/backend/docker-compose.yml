@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sfs_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: adempiere
+      POSTGRES_PASSWORD: bunde123
+      POSTGRES_DB: secure_file_storage
+    ports:
+      - "5432:5432"
+    volumes:
+      - sfs_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adempiere"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: sfs_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:5173}
+      DATABASE_URL: postgresql://adempiere:bunde1234@postgres:5432/secure_file_storage
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_me}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      STORAGE_DIR: /app/storage
+      MAX_FILE_SIZE_MB: 120
+    ports:
+      - "4000:4000"
+    volumes:
+      - sfs_storage:/app/storage
+
+volumes:
+  sfs_pg_data:
+  sfs_storage:

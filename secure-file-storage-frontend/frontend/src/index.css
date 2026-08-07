@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono-display: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-ink-950: #0b1014;
+  --color-ink-900: #10161c;
+  --color-ink-800: #171f27;
+  --color-ink-700: #212b35;
+  --color-ink-600: #303e4a;
+  --color-ink-500: #4a5b68;
+  --color-ink-400: #748794;
+  --color-ink-300: #a4b4bd;
+  --color-ink-200: #ccd6db;
+  --color-ink-100: #e9edef;
+  --color-ink-50: #f5f6f4;
+
+  --color-brass-500: #c08a3e;
+  --color-brass-400: #d6a259;
+  --color-brass-300: #e6bd83;
+
+  --color-sage-500: #4f9d7c;
+  --color-sage-400: #6bb894;
+  --color-sage-300: #93d2b3;
+
+  --color-rust-500: #b5533e;
+  --color-rust-400: #cf6a52;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-ink-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  background-image:
+    linear-gradient(var(--color-ink-800) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-ink-800) 1px, transparent 1px);
+  background-size: 48px 48px;
+  background-position: -1px -1px;
+  background-attachment: fixed;
+}
+
+::selection {
+  background: var(--color-brass-500);
+  color: var(--color-ink-950);
+}
+
+* {
+  scrollbar-color: var(--color-ink-600) var(--color-ink-900);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brass-400);
+  outline-offset: 2px;
+}
