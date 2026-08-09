@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { getPublicFile } from "../api/files";
 import { extractErrorMessage } from "../api/client";
 import { formatBytes, formatDate } from "../utils/format";
+import { FileTypeIcon } from "../utils/fileIcon";
 import type { FileItem } from "../types";
 
 export default function PublicFile() {
@@ -25,36 +26,46 @@ export default function PublicFile() {
   }, [token]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
+      <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-primary-100 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-gold-100 blur-3xl" />
+
+      <div className="relative w-full max-w-md">
         <div className="mb-6 flex justify-center">
-          <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
-            <circle cx="16" cy="16" r="11" stroke="var(--color-sage-400)" strokeWidth="2" />
-            <circle cx="16" cy="16" r="2" fill="var(--color-sage-400)" />
-            <line x1="16" y1="7" x2="16" y2="10.5" stroke="var(--color-sage-400)" strokeWidth="2" />
-          </svg>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-gold-400 shadow-lg shadow-primary-500/20">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M12 3l7 2.6v4.8c0 4.3-2.8 7.7-7 8.6-4.2-.9-7-4.3-7-8.6V5.6L12 3z" fill="white" />
+              <path d="M9.3 12.1l1.8 1.8 3.5-3.8" stroke="var(--color-primary-600)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
         </div>
 
-        {isLoading && <p className="text-center font-mono text-sm text-ink-500">Retrieving shared file…</p>}
+        {isLoading && <p className="text-center text-sm text-slate-500">Retrieving shared file…</p>}
 
         {error && (
-          <div className="rounded-lg border border-rust-500/40 bg-rust-500/10 p-6 text-center">
-            <p className="text-sm text-rust-400">{error}</p>
+          <div className="rounded-2xl border border-rose-100 bg-white p-6 text-center shadow-sm">
+            <p className="text-sm text-rose-600">{error}</p>
           </div>
         )}
 
         {file && (
-          <div className="rounded-lg border border-ink-800 bg-ink-900/60 p-6">
-            <span className="mb-3 inline-flex -rotate-3 items-center gap-1.5 rounded-sm border-2 border-sage-400/70 px-2 py-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-sage-400">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5">
+            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
               Shared file
             </span>
-            <h1 className="mb-1 break-words font-mono text-lg font-semibold text-ink-50">{file.originalName}</h1>
-            <p className="mb-4 font-mono text-xs text-ink-500">
-              {formatBytes(file.sizeBytes)} · deposited {formatDate(file.createdAt)}
-            </p>
+            <div className="mb-4 flex items-center gap-3">
+              <FileTypeIcon mimeType={file.mimeType} name={file.originalName} size={42} />
+              <div className="min-w-0">
+                <h1 className="truncate font-display text-lg font-bold text-slate-900">{file.originalName}</h1>
+                <p className="text-xs text-slate-400">
+                  {formatBytes(file.sizeBytes)} · uploaded {formatDate(file.createdAt)}
+                </p>
+              </div>
+            </div>
             <a
               href={file.publicDownloadUrl ?? undefined}
-              className="block w-full rounded-md bg-sage-500 px-4 py-2.5 text-center text-sm font-semibold text-ink-950 transition hover:bg-sage-400"
+              className="block w-full rounded-lg bg-primary-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700"
             >
               Download file
             </a>

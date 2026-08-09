@@ -60,15 +60,15 @@ export function FileUploadZone({ onUploaded }: Props) {
   );
 
   return (
-    <div className="rounded-lg border border-ink-800 bg-ink-900/60 p-5">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-mono text-sm font-semibold uppercase tracking-widest text-ink-300">Deposit a file</h2>
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-400">
+        <h2 className="font-display text-base font-bold text-slate-900">Upload a file</h2>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-500">
           <input
             type="checkbox"
             checked={isPublic}
             onChange={(e) => setIsPublic(e.target.checked)}
-            className="h-3.5 w-3.5 accent-brass-400"
+            className="h-4 w-4 rounded accent-primary-600"
           />
           Make public on upload
         </label>
@@ -82,8 +82,8 @@ export function FileUploadZone({ onUploaded }: Props) {
         onDragLeave={() => setIsDragging(false)}
         onDrop={onDrop}
         onClick={() => state.status !== "uploading" && inputRef.current?.click()}
-        className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed p-6 text-center transition-colors ${
-          isDragging ? "border-brass-400 bg-brass-500/5" : "border-ink-700 hover:border-ink-500"
+        className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
+          isDragging ? "border-primary-400 bg-primary-50" : "border-slate-200 bg-slate-50/60 hover:border-primary-300 hover:bg-primary-50/40"
         }`}
       >
         <input ref={inputRef} type="file" className="hidden" onChange={onSelect} />
@@ -91,24 +91,26 @@ export function FileUploadZone({ onUploaded }: Props) {
         {state.status === "uploading" ? (
           <>
             <ProgressDial percent={state.percent} label="uploading" />
-            <p className="max-w-xs truncate font-mono text-xs text-ink-400">{state.name}</p>
+            <p className="max-w-xs truncate text-sm text-slate-500">{state.name}</p>
           </>
         ) : (
           <>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-ink-500">
-              <path d="M12 16V4M12 4L7 9M12 4l5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <p className="text-sm text-ink-300">
-              Drag a file here, or <span className="text-brass-400 underline underline-offset-2">browse</span>
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-100">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-primary-600">
+                <path d="M12 16V4M12 4L7 9M12 4l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <p className="text-sm text-slate-600">
+              Drag a file here, or <span className="font-semibold text-primary-600">browse</span>
             </p>
-            <p className="font-mono text-[11px] text-ink-500">Up to {MAX_FILE_SIZE_MB}MB per file</p>
+            <p className="text-xs text-slate-400">Up to {MAX_FILE_SIZE_MB}MB per file</p>
           </>
         )}
       </div>
 
       {state.status === "error" && (
-        <p className="mt-3 rounded-md border border-rust-500/40 bg-rust-500/10 px-3 py-2 text-xs text-rust-400">{state.message}</p>
+        <p className="mt-3 rounded-lg border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-600">{state.message}</p>
       )}
     </div>
   );

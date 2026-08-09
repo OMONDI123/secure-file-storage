@@ -2,21 +2,21 @@ export function StatusStamp({ isPublic }: { isPublic: boolean }) {
   if (isPublic) {
     return (
       <span
-        className="inline-flex -rotate-3 items-center gap-1.5 rounded-sm border-2 border-sage-400/70 px-2 py-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-sage-400"
+        className="inline-flex items-center gap-1.5 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-700"
         title="Anyone with the link can view this file"
       >
-        <span className="h-1.5 w-1.5 rounded-full bg-sage-400" />
-        Shared
+        <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
+        Public
       </span>
     );
   }
   return (
     <span
-      className="inline-flex -rotate-3 items-center gap-1.5 rounded-sm border-2 border-brass-400/70 px-2 py-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-brass-400"
+      className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600"
       title="Only you can access this file"
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-brass-400" />
-      Sealed
+      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+      Private
     </span>
   );
 }

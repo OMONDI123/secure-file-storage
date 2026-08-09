@@ -7,7 +7,7 @@ export function ProtectedRoute() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <span className="font-mono text-sm text-ink-400">Verifying credentials…</span>
+        <span className="text-sm text-slate-500">Verifying credentials…</span>
       </div>
     );
   }

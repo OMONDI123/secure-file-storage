@@ -29,57 +29,59 @@ export default function Register() {
   };
 
   return (
-    <AuthLayout title="Vault" subtitle="Create an account to start storing files">
+    <AuthLayout title="Create your account" subtitle="Start storing and sharing files securely">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
-          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">Name</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Name</label>
           <input
             type="text"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-brass-400"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100"
             placeholder="Ada Lovelace"
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">Email</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-brass-400"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100"
             placeholder="you@example.com"
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-400">Password</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
           <input
             type="password"
             required
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-sm text-ink-100 outline-none focus:border-brass-400"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-primary-400 focus:bg-white focus:ring-4 focus:ring-primary-100"
             placeholder="••••••••"
           />
-          <p className="mt-1.5 font-mono text-[11px] text-ink-500">8+ characters, with an uppercase letter, a lowercase letter, and a number.</p>
+          <p className="mt-1.5 text-xs text-slate-400">8+ characters, with an uppercase letter, a lowercase letter, and a number.</p>
         </div>
 
-        {error && <p className="rounded-md border border-rust-500/40 bg-rust-500/10 px-3 py-2 text-xs text-rust-400">{error}</p>}
+        {error && (
+          <p className="rounded-lg border border-rose-100 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-600">{error}</p>
+        )}
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="mt-2 rounded-md bg-brass-500 px-4 py-2.5 text-sm font-semibold text-ink-950 transition hover:bg-brass-400 disabled:opacity-60"
+          className="mt-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700 disabled:opacity-60"
         >
           {isSubmitting ? "Creating account…" : "Create account"}
         </button>
       </form>
-      <p className="mt-5 text-center text-sm text-ink-400">
+      <p className="mt-6 text-center text-sm text-slate-500">
         Already registered?{" "}
-        <Link to="/login" className="text-brass-400 hover:underline">
+        <Link to="/login" className="font-semibold text-primary-600 hover:text-primary-700">
           Sign in
         </Link>
       </p>
