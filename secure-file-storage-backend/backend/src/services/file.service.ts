@@ -16,16 +16,39 @@ function generateShareToken(): string {
 }
 
 /**
+ * Ensures the storage path has the correct './' prefix for S3.
+ */
+function normalizeStoragePath(storagePath: string): string {
+  // If the path already starts with './', return as is
+  if (storagePath.startsWith('./')) {
+    return storagePath;
+  }
+  // If the path starts with 'storage/', add './' prefix
+  if (storagePath.startsWith('storage/')) {
+    return `./${storagePath}`;
+  }
+  // Otherwise, add './storage/' prefix
+  return `./storage/${storagePath}`;
+}
+
+/**
  * Generates a pre-signed URL for S3 file access.
  * Default expiration is 1 hour (3600 seconds).
  */
 export async function generateSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string> {
   try {
+    // Normalize the storage path to ensure it has the correct prefix
+    const normalizedPath = normalizeStoragePath(storagePath);
+    console.log(`[S3] Generating signed URL for key: "${normalizedPath}"`);
+    console.log(`[S3] Bucket: ${env.AWS_S3_BUCKET_NAME}`);
+    
     const command = new GetObjectCommand({
       Bucket: env.AWS_S3_BUCKET_NAME,
-      Key: storagePath,
+      Key: normalizedPath,
     });
-    return await getSignedUrl(s3Client, command, { expiresIn });
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+    console.log(`[S3] Signed URL generated successfully`);
+    return url;
   } catch (error) {
     console.error(`Failed to generate signed URL for ${storagePath}:`, error);
     throw new ApiError(500, "Failed to generate file access URL");
@@ -45,6 +68,8 @@ export async function createFileRecord(params: {
   storagePath: string;
   isPublic: boolean;
 }): Promise<FileRecord> {
+  // Ensure the storage path has the correct prefix
+  const normalizedPath = normalizeStoragePath(params.storagePath);
   const shareToken = params.isPublic ? generateShareToken() : null;
 
   const result = await pool.query<FileRecord>(
@@ -58,7 +83,7 @@ export async function createFileRecord(params: {
       params.storedName,
       params.mimeType,
       params.sizeBytes,
-      params.storagePath,
+      normalizedPath,
       params.isPublic,
       shareToken,
     ]
@@ -176,11 +201,13 @@ export async function deleteFile(fileId: string, ownerId: string): Promise<void>
 
   // Attempt to delete from S3, log errors but don't fail
   try {
+    const normalizedPath = normalizeStoragePath(file.storage_path);
     const command = new DeleteObjectCommand({
       Bucket: env.AWS_S3_BUCKET_NAME,
-      Key: file.storage_path,
+      Key: normalizedPath,
     });
     await s3Client.send(command);
+    console.log(`[S3] File deleted: ${normalizedPath}`);
   } catch (error) {
     console.error(`Failed to delete file from S3: ${file.storage_path}`, error);
   }
