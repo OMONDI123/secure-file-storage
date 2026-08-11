@@ -41,17 +41,23 @@ function refreshExpiryDate(): Date {
  * - Issues initial session tokens
  */
 export async function register(email: string, password: string, name: string) {
+  console.log('[Auth] Register attempt for:', email);
+  
   const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email.toLowerCase()]);
   if (existing.rowCount && existing.rowCount > 0) {
     throw ApiError.conflict("An account with this email already exists");
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  console.log('[Auth] Password hashed successfully');
+  
   const result = await pool.query<User>(
     `INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING *`,
     [email.toLowerCase(), passwordHash, name]
   );
   const user = result.rows[0];
+  console.log('[Auth] User registered:', user.id);
+  
   return issueSession(user);
 }
 
@@ -61,21 +67,52 @@ export async function register(email: string, password: string, name: string) {
  * - Throws generic error for security (prevents user enumeration)
  */
 export async function login(email: string, password: string) {
-  const result = await pool.query<User>("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);
-  const user = result.rows[0];
-  if (!user) {
-    throw ApiError.unauthorized("Invalid email or password");
+  console.log('[Auth] Login attempt for:', email);
+  
+  try {
+    // Step 1: Find user
+    const result = await pool.query<User>("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);
+    const user = result.rows[0];
+    
+    if (!user) {
+      console.log('[Auth] User not found:', email);
+      throw ApiError.unauthorized("Invalid email or password");
+    }
+
+    console.log('[Auth] User found:', user.id);
+    console.log('[Auth] Password hash exists:', !!user.password_hash);
+
+    // Step 2: Verify password
+    try {
+      const valid = await bcrypt.compare(password, user.password_hash);
+      console.log('[Auth] Password match:', valid);
+      
+      if (!valid) {
+        throw ApiError.unauthorized("Invalid email or password");
+      }
+    } catch (bcryptError) {
+      console.error('[Auth] Bcrypt error:', bcryptError);
+      throw ApiError.internal("Password verification failed");
+    }
+
+    // Step 3: Update last login timestamp
+    try {
+      await pool.query("UPDATE users SET last_login = now() WHERE id = $1", [user.id]);
+      console.log('[Auth] Last login updated');
+    } catch (updateError) {
+      console.warn('[Auth] Failed to update last_login:', updateError);
+      // Non-critical, continue
+    }
+
+    // Step 4: Issue session
+    const session = await issueSession(user);
+    console.log('[Auth] Login successful for:', user.email);
+    return session;
+    
+  } catch (error) {
+    console.error('[Auth] Login error:', error);
+    throw error;
   }
-
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) {
-    throw ApiError.unauthorized("Invalid email or password");
-  }
-
-  // Update last login timestamp
-  await pool.query("UPDATE users SET last_login = now() WHERE id = $1", [user.id]);
-
-  return issueSession(user);
 }
 
 /**
@@ -84,16 +121,28 @@ export async function login(email: string, password: string) {
  * - Enables token rotation on refresh
  */
 async function issueSession(user: User) {
-  const payload = { sub: user.id, email: user.email };
-  const accessToken = signAccessToken(payload);
-  const refreshToken = signRefreshToken(payload);
+  console.log('[Auth] Issuing session for user:', user.id);
+  
+  try {
+    const payload = { sub: user.id, email: user.email };
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+    console.log('[Auth] Tokens signed successfully');
 
-  await pool.query(
-    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
-    [user.id, hashToken(refreshToken), refreshExpiryDate()]
-  );
+    const tokenHash = hashToken(refreshToken);
+    console.log('[Auth] Refresh token hashed');
 
-  return { user: toPublicUser(user), accessToken, refreshToken };
+    await pool.query(
+      `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+      [user.id, tokenHash, refreshExpiryDate()]
+    );
+    console.log('[Auth] Refresh token stored in database');
+
+    return { user: toPublicUser(user), accessToken, refreshToken };
+  } catch (error) {
+    console.error('[Auth] Error issuing session:', error);
+    throw ApiError.internal("Failed to issue session");
+  }
 }
 
 /**
@@ -102,10 +151,14 @@ async function issueSession(user: User) {
  * - Verifies token exists, is not revoked, and is not expired
  */
 export async function refreshSession(refreshToken: string) {
+  console.log('[Auth] Refresh attempt');
+  
   let payload;
   try {
     payload = verifyRefreshToken(refreshToken);
-  } catch {
+    console.log('[Auth] Refresh token verified for user:', payload.sub);
+  } catch (error) {
+    console.log('[Auth] Invalid refresh token');
     throw ApiError.unauthorized("Invalid or expired refresh token");
   }
 
@@ -115,11 +168,13 @@ export async function refreshSession(refreshToken: string) {
     [tokenHash, payload.sub]
   );
   if (result.rowCount === 0) {
+    console.log('[Auth] Refresh token not found or revoked');
     throw ApiError.unauthorized("Refresh token not recognized or has been revoked");
   }
 
   // Revoke the used token (token rotation)
   await pool.query(`UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1`, [tokenHash]);
+  console.log('[Auth] Old refresh token revoked');
 
   const userResult = await pool.query<User>("SELECT * FROM users WHERE id = $1", [payload.sub]);
   const user = userResult.rows[0];
@@ -139,6 +194,7 @@ export async function logout(refreshToken: string) {
   }
   const tokenHash = hashToken(refreshToken);
   await pool.query(`UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1`, [tokenHash]);
+  console.log('[Auth] Logout successful');
 }
 
 /**
@@ -160,6 +216,7 @@ export async function revokeAllUserSessions(userId: string): Promise<void> {
     `UPDATE refresh_tokens SET revoked = true WHERE user_id = $1 AND revoked = false`,
     [userId]
   );
+  console.log('[Auth] All sessions revoked for user:', userId);
 }
 
 /**
