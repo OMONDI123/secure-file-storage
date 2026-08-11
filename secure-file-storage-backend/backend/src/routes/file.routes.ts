@@ -1,38 +1,30 @@
-// middleware/fileAuth.ts
-import { Request, Response, NextFunction } from "express";
-import { pool } from "../config/db";
+// routes/file.routes.ts
+import { Router } from "express";
+import { upload } from "../middleware/upload";
+import { requireAuth } from "../middleware/auth";
+import {
+  uploadFile,
+  listFiles,
+  getFile,
+  updateVisibility,
+  removeFile,
+  downloadFile,
+  getPublicFile,
+  downloadPublicFile,
+} from "../controllers/file.controller";
 
-export const authorizeFileAccess = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  try {
-    const fileId = req.params.id;
-    const userId = req.user?.sub;
+const router = Router();
 
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+// Protected routes (require authentication)
+router.post("/", requireAuth, upload.single("file"), uploadFile);
+router.get("/", requireAuth, listFiles);
+router.get("/:id", requireAuth, getFile);
+router.patch("/:id/visibility", requireAuth, updateVisibility);
+router.delete("/:id", requireAuth, removeFile);
+router.get("/:id/download", requireAuth, downloadFile);
 
-    const result = await pool.query(
-      `SELECT * FROM files WHERE id = $1`,
-      [fileId]
-    );
+// Public routes (no authentication required)
+router.get("/public/:token", getPublicFile);
+router.get("/public/:token/download", downloadPublicFile);
 
-    const file = result.rows[0];
-    if (!file) {
-      return res.status(404).json({ error: "File not found" });
-    }
-
-    // Only owner can access
-    if (file.owner_id !== userId) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
-    req.file = file;
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
+export default router;

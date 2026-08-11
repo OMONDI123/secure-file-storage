@@ -26,11 +26,8 @@ function serializeFile(file: FileRecord, req: Request) {
     checksumSha256: file.checksum_sha256,
     isPublic: file.is_public,
     storageType: file.storage_type || 'local',
-    // shareUrl points at the frontend's public share page (works for anyone, no auth).
     shareUrl: isPublic ? `${env.CLIENT_ORIGIN}/share/${file.share_token}` : null,
-    // publicDownloadUrl requires no auth and only works while the file is public.
     publicDownloadUrl: isPublic ? `${base}/api/files/public/${file.share_token}/download` : null,
-    // downloadUrl requires the owner's JWT and works regardless of visibility.
     downloadUrl: `${base}/api/files/${file.id}/download`,
     createdAt: file.created_at,
     updatedAt: file.updated_at,
@@ -43,30 +40,26 @@ export const uploadFile = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const isPublic = req.body.isPublic === "true" || req.body.isPublic === true;
+  const uploadedFile = req.file as any;
 
-  // For S3, file.buffer contains the data. For local, file.path contains the path.
+  // For S3, the file is already uploaded by multer-s3
+  // For local, we need to read from disk
   let fileBuffer: Buffer;
   if (env.STORAGE_TYPE === 's3') {
-    // Multer memory storage - buffer is available
-    fileBuffer = req.file.buffer;
+    // Multer memory storage - buffer is available (or use S3 key)
+    fileBuffer = uploadedFile.buffer;
   } else {
     // Multer disk storage - read from disk
-    fileBuffer = fs.readFileSync(req.file.path);
+    fileBuffer = fs.readFileSync(uploadedFile.path);
   }
 
   const file = await fileService.uploadFile(
     fileBuffer,
-    req.file.originalname,
-    req.file.mimetype,
+    uploadedFile.originalname,
+    uploadedFile.mimetype,
     req.user!.sub,
     isPublic
   );
-
-  // Clean up local file if using S3 (memory storage doesn't create files)
-  if (env.STORAGE_TYPE === 'local' && req.file.path) {
-    // The file service already saved it, we can optionally clean up the temp file
-    // but multer disk storage already saved it to STORAGE_DIR
-  }
 
   res.status(201).json({ file: serializeFile(file, req) });
 });
@@ -103,7 +96,6 @@ async function streamFileToResponse(req: Request, res: Response, file: FileRecor
       fileStream = await fileService.getFileStream(file.id, req.user?.sub);
       
       // For S3, we need to get the file size from metadata
-      // Using the file record's size_bytes
       fileSize = Number(file.size_bytes);
       
       // S3 stream doesn't support range requests easily without additional setup
@@ -120,7 +112,7 @@ async function streamFileToResponse(req: Request, res: Response, file: FileRecor
     }
 
     // Local storage - read from disk with range support
-    const filePath = path.join(env.STORAGE_DIR, file.storage_key);
+    const filePath = path.join(env.STORAGE_DIR, file.storage_key || file.stored_name);
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
