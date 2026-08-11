@@ -81,5 +81,5 @@ The interface leans into a "bank vault ledger" visual metaphor — files are "de
 
 ## What's not included
 
-- No automated test suite (unit/e2e) — given the ~5h scope, testing time went into manually verifying the auth, upload, sharing, and authorization flows end-to-end against the real backend instead.
-- No dark/light theme toggle — the app is dark-themed only.
+- No automated test suite (unit/e2e) , testing time went into manually verifying the auth, upload, sharing, and authorization flows end-to-end against the real backend instead.
+
