@@ -36,17 +36,26 @@ export const uploadFile = asyncHandler(async (req: Request, res: Response) => {
   const isPublic = req.body.isPublic === "true" || req.body.isPublic === true;
   const file = req.file as any; // multer-s3 adds extra fields
 
+  console.log(`[Upload] S3 Key: ${file.key}`);
+  console.log(`[Upload] Original name: ${file.originalname}`);
+  console.log(`[Upload] Size: ${file.size} bytes`);
+
+  // Use the S3 key directly (without './storage/' prefix)
+  const s3Key = file.key;
+
   const fileRecord = await fileService.createFileRecord({
     ownerId: req.user!.sub,
     originalName: file.originalname,
-    storedName: file.key, // S3 key
+    storedName: s3Key, // Store the exact S3 key
     mimeType: file.mimetype,
     sizeBytes: file.size,
-    storagePath: file.key, // S3 key
+    storagePath: s3Key, // Store the exact S3 key
     isPublic,
   });
 
-  const signedUrl = await fileService.generateSignedUrl(file.key);
+  console.log(`[Upload] File record created with storagePath: ${fileRecord.storage_path}`);
+
+  const signedUrl = await fileService.generateSignedUrl(s3Key);
   res.status(201).json({ file: serializeFile(fileRecord, req, signedUrl) });
 });
 
@@ -85,17 +94,20 @@ export const downloadFile = asyncHandler(async (req: Request, res: Response) => 
   // FIX: Destructure correctly
   const fileWithSignedUrl = await fileService.getFileForAccess(req.params.id, req.user?.sub);
   const { signedUrl } = fileWithSignedUrl;
+  console.log(`[Download] Redirecting to signed URL for file: ${req.params.id}`);
   res.redirect(signedUrl);
 });
 
 export const getPublicFile = asyncHandler(async (req: Request, res: Response) => {
   const file = await fileService.getFileByShareToken(req.params.token);
   const signedUrl = await fileService.generateSignedUrl(file.storage_path);
+  console.log(`[Public File] Generating signed URL for share token: ${req.params.token}`);
   res.status(200).json({ file: serializeFile(file, req, signedUrl) });
 });
 
 export const downloadPublicFile = asyncHandler(async (req: Request, res: Response) => {
   const file = await fileService.getFileByShareToken(req.params.token);
   const signedUrl = await fileService.generateSignedUrl(file.storage_path);
+  console.log(`[Public Download] Redirecting to signed URL for share token: ${req.params.token}`);
   res.redirect(signedUrl);
 });
