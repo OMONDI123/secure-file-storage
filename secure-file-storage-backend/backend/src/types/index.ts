@@ -21,16 +21,16 @@ export interface FileRecord {
   original_name: string;
   stored_name: string;
   mime_type: string;
-  size_bytes: string; // BIGINT comes back as string from pg
+  size_bytes: string;
   checksum_sha256: string | null;
   is_public: boolean;
   share_token: string | null;
   storage_path: string;
+  storage_type?: string;
   created_at: Date;
   updated_at: Date;
 }
 
-// ✅ Add this missing type
 export interface FileMetadata {
   id: string;
   originalName: string;
@@ -42,12 +42,13 @@ export interface FileMetadata {
   shareToken: string | null;
   storagePath: string;
   storageType?: 'local' | 's3';
+  userId?: string;  // Optional for ownership tracking
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface AccessTokenPayload {
-  sub: string; // user id
+  sub: string;
   email: string;
 }
 

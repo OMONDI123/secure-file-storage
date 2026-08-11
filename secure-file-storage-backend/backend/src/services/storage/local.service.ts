@@ -5,6 +5,7 @@ import path from "path";
 import { IStorageService } from "./storage.interface";
 import { FileMetadata } from "../../types";
 import { env } from "../../config/env";
+import { v4 as uuidv4 } from "uuid";
 
 export class LocalStorageService implements IStorageService {
   private storagePath: string;
@@ -17,7 +18,6 @@ export class LocalStorageService implements IStorageService {
   private async ensureStorageDirectory(): Promise<void> {
     try {
       await fs.mkdir(this.storagePath, { recursive: true });
-      console.log(`[LocalStorage] Directory ready: ${this.storagePath}`);
     } catch (error) {
       console.error('Failed to create storage directory:', error);
       throw error;
@@ -25,47 +25,71 @@ export class LocalStorageService implements IStorageService {
   }
 
   private getFilePath(key: string): string {
-    // Prevent path traversal
     const safeKey = key.replace(/\.\./g, '').replace(/\\/g, '/');
     return path.join(this.storagePath, safeKey);
   }
 
-  // ✅ Updated to match IStorageService interface
+  // ✅ Fixed: Get file size correctly from Buffer
+  private getFileSize(file: Express.Multer.File | Buffer): number {
+    if (Buffer.isBuffer(file)) {
+      return file.length;
+    }
+    if (file.buffer) {
+      return file.buffer.length;
+    }
+    if (file.size) {
+      return file.size;
+    }
+    return 0;
+  }
+
   async uploadFile(
     file: Express.Multer.File | Buffer,
     originalName: string,
-    mimeType: string
+    mimeType: string,
+    userId?: string
   ): Promise<FileMetadata> {
-    const fileBuffer = file instanceof Buffer ? file : file.buffer;
+    // ✅ Get the file buffer correctly
+    let fileBuffer: Buffer;
+    let fileSize: number;
+    
+    if (Buffer.isBuffer(file)) {
+      fileBuffer = file;
+      fileSize = file.length;
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+      fileSize = file.buffer.length;
+    } else {
+      // Fallback - read from disk if it's a file path
+      throw new Error('Invalid file upload: No buffer available');
+    }
+
     const ext = path.extname(originalName);
-    const storedName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`;
+    const storedName = `${uuidv4()}${ext}`;
     const storagePath = `uploads/${storedName}`;
     const filePath = this.getFilePath(storagePath);
     
-    // Ensure directory exists
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
-
-    // Write file
     await fs.writeFile(filePath, fileBuffer);
 
     return {
-      id: `local-${Date.now()}`,
+      id: uuidv4(),
       originalName,
-      storedName: storagePath,
+      storedName,
       mimeType,
-      sizeBytes: fileBuffer.length,
+      sizeBytes: fileSize,
       checksumSha256: null,
       isPublic: false,
       shareToken: null,
       storagePath,
       storageType: "local",
+      userId,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
   }
 
-  // ✅ Updated to match IStorageService interface
   async getFileStream(fileId: string): Promise<NodeJS.ReadableStream> {
     const filePath = this.getFilePath(fileId);
     if (!await this.fileExists(fileId)) {
@@ -74,27 +98,26 @@ export class LocalStorageService implements IStorageService {
     return createReadStream(filePath);
   }
 
-  // ✅ Updated to match IStorageService interface
   async getFileUrl(fileId: string, expiresIn?: number): Promise<string> {
-    // For local storage, return the API endpoint URL
     return `/api/files/${fileId}/download`;
   }
 
-  // ✅ Updated to match IStorageService interface
+  async getPublicUrl(fileId: string): Promise<string> {
+    const publicBaseUrl = process.env.PUBLIC_URL || 'http://localhost:4000';
+    return `${publicBaseUrl}/api/files/public/${fileId}`;
+  }
+
   async deleteFile(fileId: string): Promise<void> {
     const filePath = this.getFilePath(fileId);
     try {
       await fs.unlink(filePath);
-      console.log(`[LocalStorage] Deleted file: ${fileId}`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw error;
       }
-      // File doesn't exist, ignore
     }
   }
 
-  // ✅ Updated to match IStorageService interface
   async fileExists(fileId: string): Promise<boolean> {
     const filePath = this.getFilePath(fileId);
     try {
@@ -105,25 +128,23 @@ export class LocalStorageService implements IStorageService {
     }
   }
 
-  // ✅ Additional helper methods
-  async getFileSize(key: string): Promise<number> {
-    const filePath = this.getFilePath(key);
+  async getFileMetadata(fileId: string): Promise<FileMetadata> {
+    const filePath = this.getFilePath(fileId);
     const stats = await fs.stat(filePath);
-    return stats.size;
-  }
-
-  async getFileStats(key: string): Promise<any> {
-    const filePath = this.getFilePath(key);
-    return await fs.stat(filePath);
-  }
-
-  getFullPath(key: string): string {
-    return this.getFilePath(key);
-  }
-
-  // ✅ Method to get public URL
-  getPublicUrl(key: string): string {
-    const publicBaseUrl = process.env.PUBLIC_URL || 'http://localhost:4000';
-    return `${publicBaseUrl}/api/files/public/${key}`;
+    
+    return {
+      id: fileId,
+      originalName: path.basename(fileId),
+      storedName: fileId,
+      mimeType: 'application/octet-stream',
+      sizeBytes: stats.size,
+      checksumSha256: null,
+      isPublic: false,
+      shareToken: null,
+      storagePath: fileId,
+      storageType: "local",
+      createdAt: stats.birthtime || stats.ctime || new Date(),
+      updatedAt: stats.mtime || new Date(),
+    };
   }
 }

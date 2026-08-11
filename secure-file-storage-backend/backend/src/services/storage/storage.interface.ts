@@ -7,12 +7,14 @@ export interface IStorageService {
    * @param file - File buffer or Multer file object
    * @param originalName - Original filename
    * @param mimeType - MIME type of the file
+   * @param userId - Optional user ID for ownership tracking
    * @returns FileMetadata of the uploaded file
    */
   uploadFile(
     file: Express.Multer.File | Buffer,
     originalName: string,
-    mimeType: string
+    mimeType: string,
+    userId?: string
   ): Promise<FileMetadata>;
   
   /**
@@ -23,12 +25,19 @@ export interface IStorageService {
   getFileStream(fileId: string): Promise<NodeJS.ReadableStream>;
   
   /**
-   * Generate a download URL for a file (presigned URL for S3, direct path for local)
+   * Generate a download URL for a file
    * @param fileId - Storage key/path of the file
-   * @param expiresIn - Expiration time in seconds (optional)
+   * @param expiresIn - Expiration time in seconds
    * @returns Download URL
    */
   getFileUrl(fileId: string, expiresIn?: number): Promise<string>;
+  
+  /**
+   * Get a public URL for a file
+   * @param fileId - Storage key/path of the file
+   * @returns Public URL
+   */
+  getPublicUrl(fileId: string): Promise<string>;
   
   /**
    * Delete a file from storage
@@ -42,4 +51,11 @@ export interface IStorageService {
    * @returns True if file exists
    */
   fileExists(fileId: string): Promise<boolean>;
+  
+  /**
+   * Get file metadata
+   * @param fileId - Storage key/path of the file
+   * @returns File metadata
+   */
+  getFileMetadata(fileId: string): Promise<FileMetadata>;
 }

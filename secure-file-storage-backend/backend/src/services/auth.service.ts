@@ -8,16 +8,25 @@ import { env } from "../config/env";
 
 const SALT_ROUNDS = 12;
 
+/**
+ * Converts a full User object to a PublicUser object, excluding sensitive fields.
+ */
 function toPublicUser(user: User): PublicUser {
   return { id: user.id, email: user.email, name: user.name };
 }
 
+/**
+ * Hashes a token using SHA-256 for secure storage.
+ */
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+/**
+ * Calculates the expiration date for a refresh token based on environment configuration.
+ * Supports durations like "7d", "15m", "1h", "30s".
+ */
 function refreshExpiryDate(): Date {
-  // Parse a simple "7d" / "15m" style duration used by JWT_REFRESH_EXPIRES_IN.
   const match = /^(\d+)([smhd])$/.exec(env.JWT_REFRESH_EXPIRES_IN);
   const amount = match ? parseInt(match[1], 10) : 7;
   const unit = match ? match[2] : "d";
@@ -25,6 +34,12 @@ function refreshExpiryDate(): Date {
   return new Date(Date.now() + amount * (multipliers[unit] || 86400000));
 }
 
+/**
+ * Registers a new user account.
+ * - Validates email uniqueness
+ * - Hashes password before storage
+ * - Issues initial session tokens
+ */
 export async function register(email: string, password: string, name: string) {
   const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email.toLowerCase()]);
   if (existing.rowCount && existing.rowCount > 0) {
@@ -40,6 +55,11 @@ export async function register(email: string, password: string, name: string) {
   return issueSession(user);
 }
 
+/**
+ * Authenticates a user and issues session tokens.
+ * - Verifies email exists and password matches
+ * - Throws generic error for security (prevents user enumeration)
+ */
 export async function login(email: string, password: string) {
   const result = await pool.query<User>("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);
   const user = result.rows[0];
@@ -52,9 +72,17 @@ export async function login(email: string, password: string) {
     throw ApiError.unauthorized("Invalid email or password");
   }
 
+  // Update last login timestamp
+  await pool.query("UPDATE users SET last_login = now() WHERE id = $1", [user.id]);
+
   return issueSession(user);
 }
 
+/**
+ * Issues a new access and refresh token pair for a user.
+ * - Stores refresh token hash in database for validation
+ * - Enables token rotation on refresh
+ */
 async function issueSession(user: User) {
   const payload = { sub: user.id, email: user.email };
   const accessToken = signAccessToken(payload);
@@ -68,6 +96,11 @@ async function issueSession(user: User) {
   return { user: toPublicUser(user), accessToken, refreshToken };
 }
 
+/**
+ * Refreshes an existing session using a valid refresh token.
+ * - Implements token rotation: revokes the used token and issues a new pair
+ * - Verifies token exists, is not revoked, and is not expired
+ */
 export async function refreshSession(refreshToken: string) {
   let payload;
   try {
@@ -85,7 +118,7 @@ export async function refreshSession(refreshToken: string) {
     throw ApiError.unauthorized("Refresh token not recognized or has been revoked");
   }
 
-  // Rotate: revoke the used token, issue a new pair.
+  // Revoke the used token (token rotation)
   await pool.query(`UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1`, [tokenHash]);
 
   const userResult = await pool.query<User>("SELECT * FROM users WHERE id = $1", [payload.sub]);
@@ -97,14 +130,44 @@ export async function refreshSession(refreshToken: string) {
   return issueSession(user);
 }
 
+/**
+ * Logs out a user by revoking their refresh token.
+ */
 export async function logout(refreshToken: string) {
+  if (!refreshToken) {
+    return; // No token to revoke
+  }
   const tokenHash = hashToken(refreshToken);
   await pool.query(`UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1`, [tokenHash]);
 }
 
+/**
+ * Retrieves a public user profile by ID.
+ * - Throws an error if the user does not exist
+ */
 export async function getUserById(id: string): Promise<PublicUser> {
   const result = await pool.query<User>("SELECT * FROM users WHERE id = $1", [id]);
   const user = result.rows[0];
   if (!user) throw ApiError.notFound("User not found");
   return toPublicUser(user);
+}
+
+/**
+ * Revokes all refresh tokens for a user (force logout from all devices).
+ */
+export async function revokeAllUserSessions(userId: string): Promise<void> {
+  await pool.query(
+    `UPDATE refresh_tokens SET revoked = true WHERE user_id = $1 AND revoked = false`,
+    [userId]
+  );
+}
+
+/**
+ * Gets the current user's full profile (for authenticated routes).
+ */
+export async function getFullUserById(id: string): Promise<User> {
+  const result = await pool.query<User>("SELECT * FROM users WHERE id = $1", [id]);
+  const user = result.rows[0];
+  if (!user) throw ApiError.notFound("User not found");
+  return user;
 }

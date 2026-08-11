@@ -4,6 +4,10 @@ import { asyncHandler } from "../utils/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import * as authService from "../services/auth.service";
 
+/**
+ * Registration validation schema.
+ * Enforces strong password requirements and valid email format.
+ */
 export const registerSchema = z.object({
   email: z.string().trim().email("A valid email is required"),
   password: z
@@ -16,6 +20,9 @@ export const registerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(255),
 });
 
+/**
+ * Login validation schema.
+ */
 export const loginSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(1, "Password is required"),
@@ -24,16 +31,24 @@ export const loginSchema = z.object({
 const REFRESH_COOKIE = "refreshToken";
 const isProd = process.env.NODE_ENV === "production";
 
-function setRefreshCookie(res: Response, token: string) {
+/**
+ * Sets the refresh token as an HTTP-only cookie.
+ * Cookie is secure in production and has a 7-day lifespan.
+ */
+function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: isProd,
     sameSite: "lax",
     path: "/api/auth",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 }
 
+/**
+ * Register a new user account.
+ * Returns user data and access token, with refresh token in HTTP-only cookie.
+ */
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const { email, password, name } = req.body;
   const { user, accessToken, refreshToken } = await authService.register(email, password, name);
@@ -41,6 +56,9 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({ user, accessToken });
 });
 
+/**
+ * Authenticate a user and issue session tokens.
+ */
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
   const { user, accessToken, refreshToken } = await authService.login(email, password);
@@ -48,15 +66,25 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json({ user, accessToken });
 });
 
+/**
+ * Refresh an expired access token using a valid refresh token.
+ * Implements token rotation for enhanced security.
+ */
 export const refresh = asyncHandler(async (req: Request, res: Response) => {
   const token = req.cookies?.[REFRESH_COOKIE];
-  if (!token) throw ApiError.unauthorized("No refresh token provided");
+  if (!token) {
+    throw ApiError.unauthorized("No refresh token provided");
+  }
 
   const { user, accessToken, refreshToken } = await authService.refreshSession(token);
   setRefreshCookie(res, refreshToken);
   res.status(200).json({ user, accessToken });
 });
 
+/**
+ * Log out a user by revoking their refresh token.
+ * Clears the refresh token cookie.
+ */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const token = req.cookies?.[REFRESH_COOKIE];
   if (token) {
@@ -66,7 +94,14 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
   res.status(204).send();
 });
 
+/**
+ * Get the current authenticated user's profile.
+ * Requires a valid access token.
+ */
 export const me = asyncHandler(async (req: Request, res: Response) => {
-  const user = await authService.getUserById(req.user!.sub);
+  if (!req.user) {
+    throw ApiError.unauthorized("Not authenticated");
+  }
+  const user = await authService.getUserById(req.user.sub);
   res.status(200).json({ user });
 });

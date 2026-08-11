@@ -6,7 +6,10 @@ import { env } from "../config/env";
 import { v4 as uuidv4 } from "uuid";
 import { Request } from "express";
 
-// Allowlist of allowed extensions
+/**
+ * Allowed file extensions based on OWASP File Upload Cheat Sheet recommendations.
+ * Prevents upload of executable or potentially dangerous file types.
+ */
 const ALLOWED_EXTENSIONS = new Set([
   ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp",
   ".pdf", ".txt", ".csv", ".md", ".rtf",
@@ -16,6 +19,10 @@ const ALLOWED_EXTENSIONS = new Set([
   ".json", ".xml", ".yaml", ".yml",
 ]);
 
+/**
+ * Allowed MIME types for uploaded files.
+ * Uses both prefix matching (image/*, video/*) and exact matching for specific types.
+ */
 const ALLOWED_MIME_PREFIXES = ["image/", "video/", "audio/", "text/"];
 const ALLOWED_MIME_EXACT = new Set([
   "application/pdf",
@@ -37,6 +44,10 @@ const ALLOWED_MIME_EXACT = new Set([
   "application/octet-stream",
 ]);
 
+/**
+ * Detects and rejects files with dangerous double extensions (e.g., "file.php.png").
+ * Prevents file upload bypass attacks.
+ */
 function hasDoubleExtension(filename: string): boolean {
   const parts = filename.split(".");
   if (parts.length <= 2) return false;
@@ -44,12 +55,17 @@ function hasDoubleExtension(filename: string): boolean {
   return parts.slice(1, -1).some((p) => dangerous.has(p.toLowerCase()));
 }
 
+/**
+ * Validates that the file's MIME type is allowed.
+ */
 function isAllowedMime(mime: string): boolean {
   if (ALLOWED_MIME_EXACT.has(mime)) return true;
   return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
 }
 
-// Type definition for multer-s3 file
+/**
+ * S3 file interface for type safety.
+ */
 interface MulterS3File extends Express.Multer.File {
   key: string;
   location?: string;
@@ -57,16 +73,17 @@ interface MulterS3File extends Express.Multer.File {
   bucket?: string;
 }
 
-// S3 Storage Configuration with proper types
+/**
+ * S3 Storage Configuration.
+ * Files are stored with a UUID-based name to prevent collisions and directory traversal.
+ */
 const s3Storage = multerS3({
   s3: s3Client,
   bucket: env.AWS_S3_BUCKET_NAME,
   acl: "private",
-  // ✅ Use a function for contentType to fix type error
-  contentType: (req: any, file: any, cb: (err: any, mime?: string) => void) => {
-    // Auto-detect content type based on file extension
+  contentType: (_req: any, file: any, cb: (err: any, mime?: string) => void) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    const mimeTypes: { [key: string]: string } = {
+    const mimeTypes: Record<string, string> = {
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
       '.png': 'image/png',
@@ -76,7 +93,6 @@ const s3Storage = multerS3({
       '.pdf': 'application/pdf',
       '.txt': 'text/plain',
       '.json': 'application/json',
-      // Add more as needed
     };
     const mime = mimeTypes[ext] || 'application/octet-stream';
     cb(null, mime);
@@ -95,7 +111,10 @@ const s3Storage = multerS3({
   },
 });
 
-// File filter with validation
+/**
+ * File filter that validates file extensions and MIME types.
+ * Rejects files with double extensions or disallowed types.
+ */
 const fileFilter = (
   _req: Request,
   file: Express.Multer.File,
@@ -115,6 +134,10 @@ const fileFilter = (
   cb(null, true);
 };
 
+/**
+ * Multer upload configuration.
+ * Uses S3 storage, file filter validation, and size limits from environment.
+ */
 export const upload = multer({
   storage: s3Storage,
   fileFilter,
@@ -124,5 +147,4 @@ export const upload = multer({
   },
 });
 
-// Export the S3 file type for use in controllers
 export type { MulterS3File };

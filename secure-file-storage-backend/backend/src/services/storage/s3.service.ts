@@ -18,8 +18,6 @@ export class S3StorageService implements IStorageService {
   private bucketName: string;
 
   constructor() {
-    console.log('[S3Storage] Initializing S3 storage...');
-    
     this.s3Client = new S3Client({
       region: env.AWS_REGION || 'us-east-1',
       credentials: {
@@ -28,20 +26,45 @@ export class S3StorageService implements IStorageService {
       },
     });
     this.bucketName = env.AWS_S3_BUCKET_NAME!;
-    console.log(`[S3Storage] Using bucket: ${this.bucketName}, region: ${env.AWS_REGION}`);
+  }
+
+  // ✅ Fixed: Get file size correctly from Buffer
+  private getFileSize(file: Express.Multer.File | Buffer): number {
+    if (Buffer.isBuffer(file)) {
+      return file.length;
+    }
+    if (file.buffer) {
+      return file.buffer.length;
+    }
+    if (file.size) {
+      return file.size;
+    }
+    return 0;
   }
 
   async uploadFile(
     file: Express.Multer.File | Buffer,
     originalName: string,
-    mimeType: string
+    mimeType: string,
+    userId?: string
   ): Promise<FileMetadata> {
-    const fileBuffer = file instanceof Buffer ? file : file.buffer;
+    // ✅ Get the file buffer correctly
+    let fileBuffer: Buffer;
+    let fileSize: number;
+    
+    if (Buffer.isBuffer(file)) {
+      fileBuffer = file;
+      fileSize = file.length;
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+      fileSize = file.buffer.length;
+    } else {
+      throw new Error('Invalid file upload: No buffer available');
+    }
+
     const ext = originalName.substring(originalName.lastIndexOf('.'));
     const storedName = `${uuidv4()}${ext}`;
     const key = `uploads/${storedName}`;
-
-    console.log(`[S3Storage] Uploading file: ${originalName} (${fileBuffer.length} bytes) to ${key}`);
 
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
@@ -50,32 +73,32 @@ export class S3StorageService implements IStorageService {
       ContentType: mimeType,
       Metadata: {
         'original-name': encodeURIComponent(originalName),
+        'uploaded-by': userId || 'unknown',
         'uploaded-at': new Date().toISOString(),
-        'size': String(fileBuffer.length),
+        'size': String(fileSize),
       },
     });
 
     await this.s3Client.send(command);
-    console.log(`[S3Storage] Upload complete: ${key}`);
 
     return {
       id: uuidv4(),
       originalName,
       storedName: key,
       mimeType,
-      sizeBytes: fileBuffer.length,
+      sizeBytes: fileSize,
       checksumSha256: null,
       isPublic: false,
       shareToken: null,
       storagePath: key,
       storageType: "s3",
+      userId,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
   }
 
   async getFileStream(fileId: string): Promise<NodeJS.ReadableStream> {
-    console.log(`[S3Storage] Getting file stream: ${fileId}`);
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: fileId,
@@ -85,7 +108,6 @@ export class S3StorageService implements IStorageService {
   }
 
   async getFileUrl(fileId: string, expiresIn: number = 3600): Promise<string> {
-    console.log(`[S3Storage] Generating signed URL for: ${fileId} (expires in ${expiresIn}s)`);
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: fileId,
@@ -93,8 +115,11 @@ export class S3StorageService implements IStorageService {
     return await getSignedUrl(this.s3Client, command, { expiresIn });
   }
 
+  async getPublicUrl(fileId: string): Promise<string> {
+    return `https://${this.bucketName}.s3.${env.AWS_REGION || 'us-east-1'}.amazonaws.com/${fileId}`;
+  }
+
   async deleteFile(fileId: string): Promise<void> {
-    console.log(`[S3Storage] Deleting file: ${fileId}`);
     const command = new DeleteObjectCommand({
       Bucket: this.bucketName,
       Key: fileId,
@@ -118,16 +143,29 @@ export class S3StorageService implements IStorageService {
     }
   }
 
-  getPublicUrl(key: string): string {
-    return `https://${this.bucketName}.s3.${env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
-  }
-
-  async getPresignedUploadUrl(key: string, expiresIn: number = 3600): Promise<string> {
-    const command = new PutObjectCommand({
+  async getFileMetadata(fileId: string): Promise<FileMetadata> {
+    const command = new HeadObjectCommand({
       Bucket: this.bucketName,
-      Key: key,
-      ContentType: 'application/octet-stream',
+      Key: fileId,
     });
-    return await getSignedUrl(this.s3Client, command, { expiresIn });
+    const response = await this.s3Client.send(command);
+    
+    return {
+      id: fileId,
+      originalName: response.Metadata?.['original-name'] 
+        ? decodeURIComponent(response.Metadata['original-name']) 
+        : fileId.split('/').pop() || fileId,
+      storedName: fileId,
+      mimeType: response.ContentType || 'application/octet-stream',
+      sizeBytes: response.ContentLength || 0,
+      checksumSha256: null,
+      isPublic: false,
+      shareToken: null,
+      storagePath: fileId,
+      storageType: "s3",
+      userId: response.Metadata?.['uploaded-by'] || undefined,
+      createdAt: response.LastModified || new Date(),
+      updatedAt: response.LastModified || new Date(),
+    };
   }
 }
