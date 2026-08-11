@@ -1,4 +1,3 @@
-import fs from "fs";
 import { Request, Response } from "express";
 import { z } from "zod";
 import { asyncHandler } from "../utils/asyncHandler";
@@ -11,7 +10,7 @@ export const visibilitySchema = z.object({
   isPublic: z.boolean(),
 });
 
-function serializeFile(file: FileRecord, req: Request) {
+function serializeFile(file: FileRecord, req: Request, signedUrl?: string) {
   const base = `${req.protocol}://${req.get("host")}`;
   const isPublic = file.is_public && !!file.share_token;
   return {
@@ -21,12 +20,9 @@ function serializeFile(file: FileRecord, req: Request) {
     sizeBytes: Number(file.size_bytes),
     checksumSha256: file.checksum_sha256,
     isPublic: file.is_public,
-    // shareUrl points at the frontend's public share page (works for anyone, no auth).
     shareUrl: isPublic ? `${env.CLIENT_ORIGIN}/share/${file.share_token}` : null,
-    // publicDownloadUrl requires no auth and only works while the file is public.
-    publicDownloadUrl: isPublic ? `${base}/api/files/public/${file.share_token}/download` : null,
-    // downloadUrl requires the owner's JWT and works regardless of visibility.
-    downloadUrl: `${base}/api/files/${file.id}/download`,
+    publicDownloadUrl: signedUrl || null,
+    downloadUrl: signedUrl || null,
     createdAt: file.created_at,
     updatedAt: file.updated_at,
   };
@@ -38,34 +34,43 @@ export const uploadFile = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const isPublic = req.body.isPublic === "true" || req.body.isPublic === true;
+  const file = req.file as any; // multer-s3 adds extra fields
 
-  const file = await fileService.createFileRecord({
+  const fileRecord = await fileService.createFileRecord({
     ownerId: req.user!.sub,
-    originalName: req.file.originalname,
-    storedName: req.file.filename,
-    mimeType: req.file.mimetype,
-    sizeBytes: req.file.size,
-    storagePath: req.file.path,
+    originalName: file.originalname,
+    storedName: file.key, // S3 key
+    mimeType: file.mimetype,
+    sizeBytes: file.size,
+    storagePath: file.key, // S3 key
     isPublic,
   });
 
-  res.status(201).json({ file: serializeFile(file, req) });
+  const signedUrl = await fileService.generateSignedUrl(file.key);
+  res.status(201).json({ file: serializeFile(fileRecord, req, signedUrl) });
 });
 
 export const listFiles = asyncHandler(async (req: Request, res: Response) => {
   const files = await fileService.listUserFiles(req.user!.sub);
-  res.status(200).json({ files: files.map((f) => serializeFile(f, req)) });
+  const filesWithUrls = await Promise.all(
+    files.map(async (file) => {
+      const signedUrl = await fileService.generateSignedUrl(file.storage_path);
+      return serializeFile(file, req, signedUrl);
+    })
+  );
+  res.status(200).json({ files: filesWithUrls });
 });
 
 export const getFile = asyncHandler(async (req: Request, res: Response) => {
-  const file = await fileService.getFileForOwner(req.params.id, req.user!.sub);
-  res.status(200).json({ file: serializeFile(file, req) });
+  const { file, signedUrl } = await fileService.getFileForAccess(req.params.id, req.user?.sub);
+  res.status(200).json({ file: serializeFile(file, req, signedUrl) });
 });
 
 export const updateVisibility = asyncHandler(async (req: Request, res: Response) => {
   const { isPublic } = req.body as { isPublic: boolean };
   const file = await fileService.setVisibility(req.params.id, req.user!.sub, isPublic);
-  res.status(200).json({ file: serializeFile(file, req) });
+  const signedUrl = await fileService.generateSignedUrl(file.storage_path);
+  res.status(200).json({ file: serializeFile(file, req, signedUrl) });
 });
 
 export const removeFile = asyncHandler(async (req: Request, res: Response) => {
@@ -73,48 +78,19 @@ export const removeFile = asyncHandler(async (req: Request, res: Response) => {
   res.status(204).send();
 });
 
-/** Streams a file to the client, supporting HTTP Range requests for large files. */
-function streamFileToResponse(req: Request, res: Response, file: FileRecord) {
-  const stat = fs.statSync(file.storage_path);
-  const fileSize = stat.size;
-  const range = req.headers.range;
-
-  res.setHeader("Content-Type", file.mime_type);
-  res.setHeader(
-    "Content-Disposition",
-    `inline; filename="${encodeURIComponent(file.original_name)}"`
-  );
-  res.setHeader("Accept-Ranges", "bytes");
-
-  if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunkSize = end - start + 1;
-
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-      "Content-Length": chunkSize,
-    });
-    fs.createReadStream(file.storage_path, { start, end }).pipe(res);
-  } else {
-    res.setHeader("Content-Length", fileSize);
-    fs.createReadStream(file.storage_path).pipe(res);
-  }
-}
-
-/** Owner-authenticated or public download, based on JWT presence in Authorization header. */
 export const downloadFile = asyncHandler(async (req: Request, res: Response) => {
-  const file = await fileService.getFileForAccess(req.params.id, req.user?.sub);
-  streamFileToResponse(req, res, file);
+  const { file, signedUrl } = await fileService.getFileForAccess(req.params.id, req.user?.sub);
+  res.redirect(signedUrl);
 });
 
 export const getPublicFile = asyncHandler(async (req: Request, res: Response) => {
   const file = await fileService.getFileByShareToken(req.params.token);
-  res.status(200).json({ file: serializeFile(file, req) });
+  const signedUrl = await fileService.generateSignedUrl(file.storage_path);
+  res.status(200).json({ file: serializeFile(file, req, signedUrl) });
 });
 
 export const downloadPublicFile = asyncHandler(async (req: Request, res: Response) => {
   const file = await fileService.getFileByShareToken(req.params.token);
-  streamFileToResponse(req, res, file);
+  const signedUrl = await fileService.generateSignedUrl(file.storage_path);
+  res.redirect(signedUrl);
 });

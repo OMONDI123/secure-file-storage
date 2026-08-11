@@ -1,25 +1,30 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
+import { s3Client } from "../config/s3";
+import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { pool } from "../config/db";
 import { env } from "../config/env";
 import { ApiError } from "../utils/ApiError";
 import { FileRecord } from "../types";
 
-function computeChecksum(filePath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash("sha256");
-    const stream = fs.createReadStream(filePath);
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex")));
-    stream.on("error", reject);
-  });
-}
-
 function generateShareToken(): string {
   return crypto.randomBytes(24).toString("base64url");
 }
 
+/**
+ * Generate a pre-signed URL for S3 file access
+ */
+export async function generateSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: env.AWS_S3_BUCKET_NAME,
+    Key: storagePath,
+  });
+  return await getSignedUrl(s3Client, command, { expiresIn });
+}
+
+/**
+ * Create a new file record in the database
+ */
 export async function createFileRecord(params: {
   ownerId: string;
   originalName: string;
@@ -29,13 +34,12 @@ export async function createFileRecord(params: {
   storagePath: string;
   isPublic: boolean;
 }): Promise<FileRecord> {
-  const checksum = await computeChecksum(params.storagePath);
   const shareToken = params.isPublic ? generateShareToken() : null;
 
   const result = await pool.query<FileRecord>(
     `INSERT INTO files
-      (owner_id, original_name, stored_name, mime_type, size_bytes, checksum_sha256, is_public, share_token, storage_path)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      (owner_id, original_name, stored_name, mime_type, size_bytes, storage_path, is_public, share_token)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
     [
       params.ownerId,
@@ -43,15 +47,17 @@ export async function createFileRecord(params: {
       params.storedName,
       params.mimeType,
       params.sizeBytes,
-      checksum,
+      params.storagePath,
       params.isPublic,
       shareToken,
-      params.storagePath,
     ]
   );
   return result.rows[0];
 }
 
+/**
+ * List all files owned by a user
+ */
 export async function listUserFiles(ownerId: string): Promise<FileRecord[]> {
   const result = await pool.query<FileRecord>(
     `SELECT * FROM files WHERE owner_id = $1 ORDER BY created_at DESC`,
@@ -60,6 +66,9 @@ export async function listUserFiles(ownerId: string): Promise<FileRecord[]> {
   return result.rows;
 }
 
+/**
+ * Get a file by ID for the owner
+ */
 export async function getFileForOwner(fileId: string, ownerId: string): Promise<FileRecord> {
   const result = await pool.query<FileRecord>(`SELECT * FROM files WHERE id = $1`, [fileId]);
   const file = result.rows[0];
@@ -69,23 +78,29 @@ export async function getFileForOwner(fileId: string, ownerId: string): Promise<
 }
 
 /**
- * Resolves a file for download/preview, enforcing authorization:
- * - Public files are accessible to anyone with the share token.
- * - Private files are only accessible to their authenticated owner.
+ * Get a file for download with signed URL
  */
-export async function getFileForAccess(fileId: string, requesterId: string | undefined): Promise<FileRecord> {
+export async function getFileForAccess(fileId: string, requesterId: string | undefined): Promise<FileRecord & { signedUrl: string }> {
   const result = await pool.query<FileRecord>(`SELECT * FROM files WHERE id = $1`, [fileId]);
   const file = result.rows[0];
   if (!file) throw ApiError.notFound("File not found");
 
-  if (file.is_public) return file;
+  if (file.is_public) {
+    const signedUrl = await generateSignedUrl(file.storage_path);
+    return { ...file, signedUrl };
+  }
 
   if (!requesterId || requesterId !== file.owner_id) {
     throw ApiError.forbidden("This file is private");
   }
-  return file;
+
+  const signedUrl = await generateSignedUrl(file.storage_path);
+  return { ...file, signedUrl };
 }
 
+/**
+ * Get a file by share token (public)
+ */
 export async function getFileByShareToken(shareToken: string): Promise<FileRecord> {
   const result = await pool.query<FileRecord>(
     `SELECT * FROM files WHERE share_token = $1 AND is_public = true`,
@@ -96,6 +111,9 @@ export async function getFileByShareToken(shareToken: string): Promise<FileRecor
   return file;
 }
 
+/**
+ * Set visibility of a file
+ */
 export async function setVisibility(fileId: string, ownerId: string, isPublic: boolean): Promise<FileRecord> {
   const file = await getFileForOwner(fileId, ownerId);
 
@@ -114,20 +132,22 @@ export async function setVisibility(fileId: string, ownerId: string, isPublic: b
   return result.rows[0];
 }
 
+/**
+ * Delete a file from database and S3
+ */
 export async function deleteFile(fileId: string, ownerId: string): Promise<void> {
   const file = await getFileForOwner(fileId, ownerId);
 
   await pool.query(`DELETE FROM files WHERE id = $1`, [fileId]);
 
-  // Best-effort disk cleanup; DB row is already gone, so a failure here
-  // just leaves an orphaned file rather than corrupting state.
-  fs.unlink(file.storage_path, (err) => {
-    if (err && err.code !== "ENOENT") {
-      console.error(`Failed to remove file from disk: ${file.storage_path}`, err);
-    }
-  });
-}
-
-export function resolveStoragePath(storedName: string): string {
-  return path.join(env.STORAGE_DIR, storedName);
+  // Delete from S3
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: env.AWS_S3_BUCKET_NAME,
+      Key: file.storage_path,
+    });
+    await s3Client.send(command);
+  } catch (error) {
+    console.error(`Failed to delete file from S3: ${file.storage_path}`, error);
+  }
 }
