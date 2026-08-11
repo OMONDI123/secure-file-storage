@@ -3,26 +3,67 @@ import path from "path";
 
 dotenv.config();
 
-function required(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
+/**
+ * Type-safe environment variable getter
+ */
+function getEnv<T extends string | number>(
+  name: string,
+  fallback: T,
+  parser?: (value: string) => T
+): T {
+  const value = process.env[name];
   if (value === undefined) {
-    throw new Error(`Missing required environment variable: ${name}`);
+    return fallback;
   }
-  return value;
+  return parser ? parser(value) : (value as T);
 }
 
+/**
+ * Validates required environment variables
+ */
+function validateEnv(variables: string[]): void {
+  const missing = variables.filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}`
+    );
+  }
+}
+
+// Validate required variables early
+validateEnv(["DATABASE_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"]);
+
+/**
+ * Application environment configuration
+ */
 export const env = {
-  NODE_ENV: process.env.NODE_ENV || "development",
-  PORT: parseInt(process.env.PORT || "4000", 10),
-  CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+  // Environment
+  NODE_ENV: getEnv("NODE_ENV", "development") as string,
 
-  DATABASE_URL: required("DATABASE_URL"),
+  // Server
+  PORT: getEnv("PORT", 4000, (v) => parseInt(v, 10)),
 
-  JWT_ACCESS_SECRET: required("JWT_ACCESS_SECRET"),
-  JWT_REFRESH_SECRET: required("JWT_REFRESH_SECRET"),
-  JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
-  JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+  // CORS
+  CLIENT_ORIGIN: getEnv("CLIENT_ORIGIN", "http://localhost:5173") as string,
 
-  STORAGE_DIR: path.resolve(process.env.STORAGE_DIR || "./storage"),
-  MAX_FILE_SIZE_MB: parseInt(process.env.MAX_FILE_SIZE_MB || "120", 10),
-};
+  // Database
+  DATABASE_URL: process.env.DATABASE_URL!,
+
+  // JWT
+  JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET!,
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET!,
+  JWT_ACCESS_EXPIRES_IN: getEnv("JWT_ACCESS_EXPIRES_IN", "15m") as string,
+  JWT_REFRESH_EXPIRES_IN: getEnv("JWT_REFRESH_EXPIRES_IN", "7d") as string,
+
+  // Storage
+  STORAGE_DIR: path.resolve(getEnv("STORAGE_DIR", "./storage") as string),
+  MAX_FILE_SIZE_MB: getEnv("MAX_FILE_SIZE_MB", 120, (v) => parseInt(v, 10)),
+} as const;
+
+// Log configuration in development
+if (env.NODE_ENV !== "production") {
+  console.log("[Config] Environment loaded successfully");
+  console.log("[Config] NODE_ENV:", env.NODE_ENV);
+  console.log("[Config] PORT:", env.PORT);
+  console.log("[Config] CLIENT_ORIGIN:", env.CLIENT_ORIGIN);
+}
