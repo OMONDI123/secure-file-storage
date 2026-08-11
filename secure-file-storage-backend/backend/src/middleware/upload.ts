@@ -1,5 +1,5 @@
 import multer from "multer";
-import multerS3, { AUTO_CONTENT_TYPE } from "multer-s3";
+import multerS3 from "multer-s3";
 import path from "path";
 import { s3Client } from "../config/s3";
 import { env } from "../config/env";
@@ -62,7 +62,7 @@ const s3Storage = multerS3({
   s3: s3Client,
   bucket: env.AWS_S3_BUCKET_NAME,
   acl: "private",
-  contentType: AUTO_CONTENT_TYPE, // Fixed: Use imported constant directly
+  contentType: "auto", // ✅ Fixed: Use string literal instead of AUTO_CONTENT_TYPE
   key: (
     _req: Express.Request,
     file: Express.Multer.File,
