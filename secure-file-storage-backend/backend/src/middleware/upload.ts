@@ -105,8 +105,18 @@ const s3Storage = multerS3({
     const ext = path.extname(file.originalname).toLowerCase();
     const safeExt = ALLOWED_EXTENSIONS.has(ext) ? ext : '';
     const uniqueId = uuidv4();
-    // Use './storage/' prefix to match S3
-    const key = `./storage/${uniqueId}${safeExt}`;
+    // IMPORTANT: never prefix S3 keys with "./". A leading "./" is a valid
+    // literal character sequence in an S3 object key, but it is also a
+    // dot-segment per RFC 3986 / the WHATWG URL spec. Any RFC-3986-compliant
+    // client (every browser, when it parses a redirect Location header or an
+    // <a href>) silently normalizes "/./" out of a URL's path before making
+    // the request. That changes the actual request path sent to S3 without
+    // changing the SigV4 signature that was computed for the original path,
+    // so presigned GET/redirect flows fail with 403 SignatureDoesNotMatch
+    // even though the exact same key works fine from tools (like Postman)
+    // that don't re-normalize the URL. Keeping keys dot-free avoids the
+    // whole class of bug.
+    const key = `storage/${uniqueId}${safeExt}`;
     console.log(`[S3] Generated key: ${key}`);
     cb(null, key);
   },

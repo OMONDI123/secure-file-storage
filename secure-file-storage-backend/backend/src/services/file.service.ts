@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Readable } from "stream";
 import { s3Client } from "../config/s3";
 import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -16,35 +17,44 @@ function generateShareToken(): string {
 }
 
 /**
- * Ensures the storage path has the correct './' prefix for S3.
+ * Sanitizes a storage path before it is written to the database for a NEW
+ * upload. This does NOT touch existing rows.
+ *
+ * Historically this function added a "./" prefix "to match S3". That was the
+ * root cause of downloads failing in every browser (see the comment in
+ * middleware/upload.ts for the full explanation): a leading "./" is a
+ * dot-segment that RFC-3986/WHATWG-URL-compliant clients strip out of a URL
+ * path during navigation, which silently changes the request path sent to
+ * S3 out from under a SigV4-signed URL. We now do the opposite: strip any
+ * leading "./" so newly written rows are always clean.
  */
 function normalizeStoragePath(storagePath: string): string {
-  // If the path already starts with './', return as is
-  if (storagePath.startsWith('./')) {
-    return storagePath;
+  const withoutDotPrefix = storagePath.replace(/^(\.\/)+/, "");
+  if (withoutDotPrefix.startsWith("storage/")) {
+    return withoutDotPrefix;
   }
-  // If the path starts with 'storage/', add './' prefix
-  if (storagePath.startsWith('storage/')) {
-    return `./${storagePath}`;
-  }
-  // Otherwise, add './storage/' prefix
-  return `./storage/${storagePath}`;
+  return `storage/${withoutDotPrefix}`;
 }
 
 /**
  * Generates a pre-signed URL for S3 file access.
  * Default expiration is 1 hour (3600 seconds).
+ *
+ * NOTE: presigned URLs are inherently fragile for redirect-based downloads
+ * (see explanation above) whenever a key contains characters a URL parser
+ * would normalize. Prefer `getFileStream` + streaming the response through
+ * our own API for anything the browser will navigate/redirect to. This is
+ * kept around for cases where handing out a direct, time-limited S3 URL is
+ * genuinely useful (e.g. server-to-server, admin tooling).
  */
 export async function generateSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string> {
   try {
-    // Normalize the storage path to ensure it has the correct prefix
-    const normalizedPath = normalizeStoragePath(storagePath);
-    console.log(`[S3] Generating signed URL for key: "${normalizedPath}"`);
+    console.log(`[S3] Generating signed URL for key: "${storagePath}"`);
     console.log(`[S3] Bucket: ${env.AWS_S3_BUCKET_NAME}`);
-    
+
     const command = new GetObjectCommand({
       Bucket: env.AWS_S3_BUCKET_NAME,
-      Key: normalizedPath,
+      Key: storagePath,
     });
     const url = await getSignedUrl(s3Client, command, { expiresIn });
     console.log(`[S3] Signed URL generated successfully`);
@@ -52,6 +62,43 @@ export async function generateSignedUrl(storagePath: string, expiresIn: number =
   } catch (error) {
     console.error(`Failed to generate signed URL for ${storagePath}:`, error);
     throw new ApiError(500, "Failed to generate file access URL");
+  }
+}
+
+/**
+ * Fetches a file's bytes directly from S3 and returns a readable stream
+ * plus its metadata, so the caller can pipe it straight through our own
+ * API response. This is the download path actually used by the app.
+ *
+ * Streaming through our own server (instead of redirecting the browser to
+ * a presigned S3 URL) sidesteps the URL-normalization problem entirely:
+ * the SigV4 signature is computed and the request is sent in the very
+ * same call, with no intermediate Location-header round trip through the
+ * browser's URL parser. It also means legacy rows whose storage_path still
+ * contains a literal "./" (from before this fix) keep working with zero
+ * migration, since we always use the exact key stored in the database.
+ */
+export async function getFileStream(
+  storagePath: string
+): Promise<{ stream: Readable; contentType?: string; contentLength?: number }> {
+  try {
+    const command = new GetObjectCommand({
+      Bucket: env.AWS_S3_BUCKET_NAME,
+      Key: storagePath,
+    });
+    const response = await s3Client.send(command);
+    if (!response.Body) {
+      throw new ApiError(404, "File content could not be found in storage");
+    }
+    return {
+      stream: response.Body as Readable,
+      contentType: response.ContentType,
+      contentLength: response.ContentLength,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    console.error(`Failed to fetch file stream for key "${storagePath}":`, error);
+    throw new ApiError(404, "File could not be retrieved from storage");
   }
 }
 
@@ -199,15 +246,17 @@ export async function deleteFile(fileId: string, ownerId: string): Promise<void>
   // Delete from database first (prevents orphaned records)
   await pool.query(`DELETE FROM files WHERE id = $1`, [fileId]);
 
-  // Attempt to delete from S3, log errors but don't fail
+  // Attempt to delete from S3, log errors but don't fail.
+  // Use the exact key as stored in the DB (do NOT "normalize" it) — that's
+  // the literal key the object actually lives under, whether it's a clean
+  // new-style key or a legacy one with a leading "./".
   try {
-    const normalizedPath = normalizeStoragePath(file.storage_path);
     const command = new DeleteObjectCommand({
       Bucket: env.AWS_S3_BUCKET_NAME,
-      Key: normalizedPath,
+      Key: file.storage_path,
     });
     await s3Client.send(command);
-    console.log(`[S3] File deleted: ${normalizedPath}`);
+    console.log(`[S3] File deleted: ${file.storage_path}`);
   } catch (error) {
     console.error(`Failed to delete file from S3: ${file.storage_path}`, error);
   }
