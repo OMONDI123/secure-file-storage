@@ -17,6 +17,7 @@ export class LocalStorageService implements IStorageService {
   private async ensureStorageDirectory(): Promise<void> {
     try {
       await fs.mkdir(this.storagePath, { recursive: true });
+      console.log(`[LocalStorage] Directory ready: ${this.storagePath}`);
     } catch (error) {
       console.error('Failed to create storage directory:', error);
       throw error;
@@ -29,43 +30,62 @@ export class LocalStorageService implements IStorageService {
     return path.join(this.storagePath, safeKey);
   }
 
-  async upload(file: Buffer, metadata: FileMetadata): Promise<string> {
-    const { key } = metadata;
+  // ✅ Updated to match IStorageService interface
+  async uploadFile(
+    file: Express.Multer.File | Buffer,
+    originalName: string,
+    mimeType: string
+  ): Promise<FileMetadata> {
+    const fileBuffer = file instanceof Buffer ? file : file.buffer;
+    const ext = path.extname(originalName);
+    const storedName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}${ext}`;
+    const storagePath = `uploads/${storedName}`;
+    const filePath = this.getFilePath(storagePath);
     
-    // Create subdirectories if needed
-    const filePath = this.getFilePath(key);
+    // Ensure directory exists
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
 
     // Write file
-    await fs.writeFile(filePath, file);
-    
-    return key;
+    await fs.writeFile(filePath, fileBuffer);
+
+    return {
+      id: `local-${Date.now()}`,
+      originalName,
+      storedName: storagePath,
+      mimeType,
+      sizeBytes: fileBuffer.length,
+      checksumSha256: null,
+      isPublic: false,
+      shareToken: null,
+      storagePath,
+      storageType: "local",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
   }
 
-  async getReadStream(key: string): Promise<NodeJS.ReadableStream> {
-    const filePath = this.getFilePath(key);
-    if (!await this.exists(key)) {
-      throw new Error(`File not found: ${key}`);
+  // ✅ Updated to match IStorageService interface
+  async getFileStream(fileId: string): Promise<NodeJS.ReadableStream> {
+    const filePath = this.getFilePath(fileId);
+    if (!await this.fileExists(fileId)) {
+      throw new Error(`File not found: ${fileId}`);
     }
     return createReadStream(filePath);
   }
 
-  async getDownloadUrl(key: string, expiresIn?: number): Promise<string> {
+  // ✅ Updated to match IStorageService interface
+  async getFileUrl(fileId: string, expiresIn?: number): Promise<string> {
     // For local storage, return the API endpoint URL
-    return `/api/files/download/${key}`;
+    return `/api/files/${fileId}/download`;
   }
 
-  getPublicUrl(key: string): string {
-    // For local storage, public files are served through API
-    const publicBaseUrl = process.env.PUBLIC_URL || 'http://localhost:4000';
-    return `${publicBaseUrl}/api/files/public/${key}`;
-  }
-
-  async delete(key: string): Promise<void> {
-    const filePath = this.getFilePath(key);
+  // ✅ Updated to match IStorageService interface
+  async deleteFile(fileId: string): Promise<void> {
+    const filePath = this.getFilePath(fileId);
     try {
       await fs.unlink(filePath);
+      console.log(`[LocalStorage] Deleted file: ${fileId}`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw error;
@@ -74,8 +94,9 @@ export class LocalStorageService implements IStorageService {
     }
   }
 
-  async exists(key: string): Promise<boolean> {
-    const filePath = this.getFilePath(key);
+  // ✅ Updated to match IStorageService interface
+  async fileExists(fileId: string): Promise<boolean> {
+    const filePath = this.getFilePath(fileId);
     try {
       await fs.access(filePath);
       return true;
@@ -84,105 +105,7 @@ export class LocalStorageService implements IStorageService {
     }
   }
 
-  async listFiles(prefix?: string): Promise<string[]> {
-    const dirPath = prefix ? this.getFilePath(prefix) : this.storagePath;
-    try {
-      const files = await fs.readdir(dirPath, { withFileTypes: true });
-      const result: string[] = [];
-      
-      for (const file of files) {
-        if (file.isDirectory()) {
-          // Recursively get files from subdirectories
-          const subPrefix = prefix ? path.join(prefix, file.name) : file.name;
-          const subFiles = await this.listFiles(subPrefix);
-          result.push(...subFiles);
-        } else {
-          const filePath = prefix ? path.join(prefix, file.name) : file.name;
-          result.push(filePath);
-        }
-      }
-      
-      return result;
-    } catch {
-      return [];
-    }
-  }
-
-  async copyFile(sourceKey: string, destinationKey: string): Promise<void> {
-    const sourcePath = this.getFilePath(sourceKey);
-    const destPath = this.getFilePath(destinationKey);
-    
-    // Ensure destination directory exists
-    const destDir = path.dirname(destPath);
-    await fs.mkdir(destDir, { recursive: true });
-    
-    await fs.copyFile(sourcePath, destPath);
-  }
-
-  async getFileMetadata(key: string): Promise<FileMetadata> {
-    const filePath = this.getFilePath(key);
-    const stats = await fs.stat(filePath);
-    
-    // Extract original name from key (last part after the last slash)
-    const originalName = path.basename(key);
-    // Try to determine mime type from extension
-    const ext = path.extname(originalName).toLowerCase();
-    const mimeType = this.getMimeTypeFromExtension(ext);
-    
-    return {
-      key,
-      originalName,
-      mimeType,
-      size: stats.size,
-      userId: 'unknown',
-      visibility: 'private',
-      uploadedAt: stats.birthtime || stats.ctime || new Date(),
-    };
-  }
-
-  // Helper to get mime type from extension
-  private getMimeTypeFromExtension(ext: string): string {
-    const mimeTypes: Record<string, string> = {
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.svg': 'image/svg+xml',
-      '.bmp': 'image/bmp',
-      '.pdf': 'application/pdf',
-      '.txt': 'text/plain',
-      '.csv': 'text/csv',
-      '.md': 'text/markdown',
-      '.rtf': 'application/rtf',
-      '.doc': 'application/msword',
-      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      '.xls': 'application/vnd.ms-excel',
-      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      '.ppt': 'application/vnd.ms-powerpoint',
-      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      '.zip': 'application/zip',
-      '.tar': 'application/x-tar',
-      '.gz': 'application/gzip',
-      '.7z': 'application/x-7z-compressed',
-      '.rar': 'application/x-rar-compressed',
-      '.mp3': 'audio/mpeg',
-      '.wav': 'audio/wav',
-      '.ogg': 'audio/ogg',
-      '.mp4': 'video/mp4',
-      '.mov': 'video/quicktime',
-      '.avi': 'video/x-msvideo',
-      '.mkv': 'video/x-matroska',
-      '.webm': 'video/webm',
-      '.json': 'application/json',
-      '.xml': 'application/xml',
-      '.yaml': 'application/yaml',
-      '.yml': 'application/yaml',
-    };
-    return mimeTypes[ext] || 'application/octet-stream';
-  }
-
-  // Local-specific helper methods
+  // ✅ Additional helper methods
   async getFileSize(key: string): Promise<number> {
     const filePath = this.getFilePath(key);
     const stats = await fs.stat(filePath);
@@ -194,8 +117,13 @@ export class LocalStorageService implements IStorageService {
     return await fs.stat(filePath);
   }
 
-  // Get full file path (useful for debugging)
   getFullPath(key: string): string {
     return this.getFilePath(key);
+  }
+
+  // ✅ Method to get public URL
+  getPublicUrl(key: string): string {
+    const publicBaseUrl = process.env.PUBLIC_URL || 'http://localhost:4000';
+    return `${publicBaseUrl}/api/files/public/${key}`;
   }
 }
