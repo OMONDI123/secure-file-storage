@@ -1,3 +1,5 @@
+// types/index.ts
+
 export interface User {
   id: string;
   email: string;
@@ -26,6 +28,22 @@ export interface FileRecord {
   storage_path: string;
   created_at: Date;
   updated_at: Date;
+}
+
+// ✅ Add this missing type
+export interface FileMetadata {
+  id: string;
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string | null;
+  isPublic: boolean;
+  shareToken: string | null;
+  storagePath: string;
+  storageType?: 'local' | 's3';
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface AccessTokenPayload {
