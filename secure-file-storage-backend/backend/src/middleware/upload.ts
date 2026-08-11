@@ -105,8 +105,9 @@ const s3Storage = multerS3({
     const ext = path.extname(file.originalname).toLowerCase();
     const safeExt = ALLOWED_EXTENSIONS.has(ext) ? ext : '';
     const uniqueId = uuidv4();
-    const sanitizedFileName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '-');
-    const key = `${env.STORAGE_DIR}/${uniqueId}${safeExt}`;
+    // Use './storage/' prefix to match S3
+    const key = `./storage/${uniqueId}${safeExt}`;
+    console.log(`[S3] Generated key: ${key}`);
     cb(null, key);
   },
 });
