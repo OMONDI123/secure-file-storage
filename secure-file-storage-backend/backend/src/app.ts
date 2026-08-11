@@ -110,6 +110,20 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Test endpoint to verify API is reachable
+app.get('/api/test', (_req, res) => {
+  res.status(200).json({
+    message: 'Backend API is reachable',
+    timestamp: new Date().toISOString(),
+    environment: {
+      nodeEnv: env.NODE_ENV,
+      clientOrigin: env.CLIENT_ORIGIN,
+      databaseConfigured: !!env.DATABASE_URL,
+      jwtConfigured: !!env.JWT_ACCESS_SECRET && !!env.JWT_REFRESH_SECRET,
+    },
+  });
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/files', fileRoutes);
