@@ -1,15 +1,8 @@
 import dotenv from "dotenv";
 import path from "path";
 
-// Load environment variables from .env file
 dotenv.config();
 
-/**
- * Validates and retrieves a required environment variable
- * @param name - The environment variable name
- * @param fallback - Optional fallback value if not set
- * @throws Error if the variable is not set and no fallback provided
- */
 function required(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
   if (value === undefined) {
@@ -18,61 +11,72 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
-/**
- * Environment configuration object
- * Contains all application configuration derived from environment variables
- */
+function optional(name: string, fallback?: string): string | undefined {
+  return process.env[name] ?? fallback;
+}
+
 export const env = {
-  // Application environment
+  // App
   NODE_ENV: process.env.NODE_ENV || "development",
-  
-  // Server configuration
   PORT: parseInt(process.env.PORT || "4000", 10),
-  
-  // CORS configuration
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || "http://localhost:5173",
 
-  // Database configuration
+  // Database
   DATABASE_URL: required("DATABASE_URL"),
 
-  // JWT Authentication configuration
+  // JWT
   JWT_ACCESS_SECRET: required("JWT_ACCESS_SECRET"),
   JWT_REFRESH_SECRET: required("JWT_REFRESH_SECRET"),
   JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || "15m",
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
 
-  // AWS S3 Configuration
-  AWS_ACCESS_KEY_ID: required("AWS_ACCESS_KEY_ID"),
-  AWS_SECRET_ACCESS_KEY: required("AWS_SECRET_ACCESS_KEY"),
-  AWS_REGION: required("AWS_REGION"),
-  AWS_S3_BUCKET_NAME: required("AWS_S3_BUCKET_NAME"),
-
-  // File storage configuration (now used as S3 key prefix)
-  STORAGE_DIR: process.env.STORAGE_DIR || "uploads",
+  // Storage Configuration
+  STORAGE_TYPE: (process.env.STORAGE_TYPE || "local") as "local" | "s3",
+  
+  // Local Storage (used when STORAGE_TYPE === "local")
+  STORAGE_DIR: path.resolve(process.env.STORAGE_DIR || "./storage"),
+  
+  // S3 Storage (used when STORAGE_TYPE === "s3")
+  AWS_ACCESS_KEY_ID: optional("AWS_ACCESS_KEY_ID"),
+  AWS_SECRET_ACCESS_KEY: optional("AWS_SECRET_ACCESS_KEY"),
+  AWS_REGION: optional("AWS_REGION", "us-east-1"),
+  S3_BUCKET_NAME: optional("S3_BUCKET_NAME"),
+  AWS_S3_ENDPOINT: optional("AWS_S3_ENDPOINT"), // For custom S3 endpoints (DigitalOcean Spaces, etc.)
+  
+  // File limits
   MAX_FILE_SIZE_MB: parseInt(process.env.MAX_FILE_SIZE_MB || "120", 10),
+  
+  // Presigned URL expiration (in seconds)
+  PUBLIC_FILE_EXPIRY: parseInt(process.env.PUBLIC_FILE_EXPIRY || "3600", 10), // 1 hour
+  PRIVATE_FILE_EXPIRY: parseInt(process.env.PRIVATE_FILE_EXPIRY || "300", 10), // 5 minutes
 };
 
-// Validation for critical configuration
-if (env.NODE_ENV === "production") {
-  if (!env.CLIENT_ORIGIN || env.CLIENT_ORIGIN === "http://localhost:5173") {
-    console.warn("[Warning] CLIENT_ORIGIN is set to localhost in production environment");
+// Validation: If using S3, ensure all S3 credentials are present
+if (env.STORAGE_TYPE === "s3") {
+  if (!env.AWS_ACCESS_KEY_ID) {
+    throw new Error("Missing required environment variable: AWS_ACCESS_KEY_ID (required when STORAGE_TYPE=s3)");
+  }
+  if (!env.AWS_SECRET_ACCESS_KEY) {
+    throw new Error("Missing required environment variable: AWS_SECRET_ACCESS_KEY (required when STORAGE_TYPE=s3)");
+  }
+  if (!env.S3_BUCKET_NAME) {
+    throw new Error("Missing required environment variable: S3_BUCKET_NAME (required when STORAGE_TYPE=s3)");
   }
 }
 
-// Export individual constants for convenience
-export const {
-  NODE_ENV,
-  PORT,
-  CLIENT_ORIGIN,
-  DATABASE_URL,
-  JWT_ACCESS_SECRET,
-  JWT_REFRESH_SECRET,
-  JWT_ACCESS_EXPIRES_IN,
-  JWT_REFRESH_EXPIRES_IN,
-  AWS_ACCESS_KEY_ID,
-  AWS_SECRET_ACCESS_KEY,
-  AWS_REGION,
-  AWS_S3_BUCKET_NAME,
-  STORAGE_DIR,
-  MAX_FILE_SIZE_MB,
-} = env;
+// Validation: If using local storage, ensure STORAGE_DIR is valid
+if (env.STORAGE_TYPE === "local") {
+  // Create directory if it doesn't exist (will be handled by storage service)
+  // Just log a warning if it's not set
+  if (!env.STORAGE_DIR) {
+    console.warn("STORAGE_DIR not set, using default: ./storage");
+  }
+}
+
+// Validation: Max file size
+if (env.MAX_FILE_SIZE_MB <= 0) {
+  throw new Error("MAX_FILE_SIZE_MB must be greater than 0");
+}
+
+// Export type for use in other files
+export type Env = typeof env;

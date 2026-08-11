@@ -19,9 +19,16 @@ export function getAccessToken() {
 }
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (accessToken) {
+  // Skip adding auth header for public endpoints
+  const isPublicEndpoint = config.url?.includes('/api/files/public/');
+  
+  // Only add auth token if:
+  // 1. We have a token AND
+  // 2. It's NOT a public endpoint
+  if (accessToken && !isPublicEndpoint) {
     config.headers.set("Authorization", `Bearer ${accessToken}`);
   }
+  
   return config;
 });
 
@@ -54,6 +61,12 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const isAuthRoute = original?.url?.includes("/api/auth/login") || original?.url?.includes("/api/auth/register");
+    const isPublicEndpoint = original?.url?.includes('/api/files/public/');
+
+    // Skip refresh logic for public endpoints
+    if (isPublicEndpoint) {
+      return Promise.reject(error);
+    }
 
     if (error.response?.status === 401 && original && !original._retry && !isAuthRoute) {
       original._retry = true;

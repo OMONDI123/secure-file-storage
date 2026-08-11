@@ -1,12 +1,20 @@
-import multer from "multer";
-import multerS3 from "multer-s3";
+// middleware/upload.ts
+import fs from "fs";
 import path from "path";
-import { s3Client } from "../config/s3";
-import { env } from "../config/env";
+import multer, { FileFilterCallback } from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { Request } from "express";
+import { env } from "../config/env";
 
-// Allowlist of allowed extensions
+/**
+ * OWASP File Upload Cheat Sheet guidance applied here:
+ * - Files are stored outside any web-servable/static directory.
+ * - The original filename is NEVER used to build the on-disk path (stored_name is a UUID).
+ * - Extension + MIME type are checked against an allowlist (denylists are bypassable).
+ * - A hard size cap is enforced by multer itself (belt-and-suspenders with app-level checks).
+ * - Double extensions (e.g. "file.php.png") are rejected.
+ */
+
 const ALLOWED_EXTENSIONS = new Set([
   ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp",
   ".pdf", ".txt", ".csv", ".md", ".rtf",
@@ -49,58 +57,24 @@ function isAllowedMime(mime: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
 }
 
-// Type definition for multer-s3 file
-interface MulterS3File extends Express.Multer.File {
-  key: string;
-  location?: string;
-  etag?: string;
-  bucket?: string;
-}
+// For S3, use memory storage. For local, use disk storage.
+const storage = env.STORAGE_TYPE === 's3' 
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (_req, _file, cb) => {
+        if (!fs.existsSync(env.STORAGE_DIR)) {
+          fs.mkdirSync(env.STORAGE_DIR, { recursive: true });
+        }
+        cb(null, env.STORAGE_DIR);
+      },
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const safeExt = ALLOWED_EXTENSIONS.has(ext) ? ext : "";
+        cb(null, `${uuidv4()}${safeExt}`);
+      },
+    });
 
-// S3 Storage Configuration with proper types
-const s3Storage = multerS3({
-  s3: s3Client,
-  bucket: env.AWS_S3_BUCKET_NAME,
-  acl: "private",
-  // ✅ Use a function for contentType to fix type error
-  contentType: (req: any, file: any, cb: (err: any, mime?: string) => void) => {
-    // Auto-detect content type based on file extension
-    const ext = path.extname(file.originalname).toLowerCase();
-    const mimeTypes: { [key: string]: string } = {
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.gif': 'image/gif',
-      '.webp': 'image/webp',
-      '.svg': 'image/svg+xml',
-      '.pdf': 'application/pdf',
-      '.txt': 'text/plain',
-      '.json': 'application/json',
-      // Add more as needed
-    };
-    const mime = mimeTypes[ext] || 'application/octet-stream';
-    cb(null, mime);
-  },
-  key: (
-    _req: Express.Request,
-    file: Express.Multer.File,
-    cb: (error: Error | null, key?: string) => void
-  ) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const safeExt = ALLOWED_EXTENSIONS.has(ext) ? ext : '';
-    const uniqueId = uuidv4();
-    const sanitizedFileName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '-');
-    const key = `${env.STORAGE_DIR}/${uniqueId}${safeExt}`;
-    cb(null, key);
-  },
-});
-
-// File filter with validation
-const fileFilter = (
-  _req: Request,
-  file: Express.Multer.File,
-  cb: multer.FileFilterCallback
-) => {
+const fileFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
   const ext = path.extname(file.originalname).toLowerCase();
 
   if (hasDoubleExtension(file.originalname)) {
@@ -116,13 +90,10 @@ const fileFilter = (
 };
 
 export const upload = multer({
-  storage: s3Storage,
+  storage,
   fileFilter,
   limits: {
     fileSize: env.MAX_FILE_SIZE_MB * 1024 * 1024,
     files: 1,
   },
 });
-
-// Export the S3 file type for use in controllers
-export type { MulterS3File };

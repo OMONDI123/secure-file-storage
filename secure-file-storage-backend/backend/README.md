@@ -169,4 +169,3 @@ Given the ~5h scope, a few things were deliberately left out but would be next i
 - Cloud object storage (S3/Cloudinary) — files are stored on local disk behind the API, which is simpler to run for review but doesn't horizontally scale
 - Email verification and password reset flows
 - Per-user storage quotas
-

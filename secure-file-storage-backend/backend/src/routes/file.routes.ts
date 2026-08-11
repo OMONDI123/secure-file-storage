@@ -1,23 +1,38 @@
-import { Router } from "express";
-import * as fileController from "../controllers/file.controller";
-import { requireAuth } from "../middleware/auth";
-import { validateBody } from "../middleware/validate";
-import { upload } from "../middleware/upload";
+// middleware/fileAuth.ts
+import { Request, Response, NextFunction } from "express";
+import { pool } from "../config/db";
 
-const router = Router();
+export const authorizeFileAccess = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const fileId = req.params.id;
+    const userId = req.user?.sub;
 
-// Public share endpoints (no auth required) — declared before "/:id" routes
-// so "public" is never captured as an :id param.
-router.get("/public/:token", fileController.getPublicFile);
-router.get("/public/:token/download", fileController.downloadPublicFile);
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-router.use(requireAuth);
+    const result = await pool.query(
+      `SELECT * FROM files WHERE id = $1`,
+      [fileId]
+    );
 
-router.post("/", upload.single("file"), fileController.uploadFile);
-router.get("/", fileController.listFiles);
-router.get("/:id", fileController.getFile);
-router.patch("/:id/visibility", validateBody(fileController.visibilitySchema), fileController.updateVisibility);
-router.delete("/:id", fileController.removeFile);
-router.get("/:id/download", fileController.downloadFile);
+    const file = result.rows[0];
+    if (!file) {
+      return res.status(404).json({ error: "File not found" });
+    }
 
-export default router;
+    // Only owner can access
+    if (file.owner_id !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    req.file = file;
+    next();
+  } catch (error) {
+    next(error);
+  }
+};

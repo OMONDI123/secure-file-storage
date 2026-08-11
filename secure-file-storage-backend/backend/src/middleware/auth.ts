@@ -1,6 +1,8 @@
+// middleware/auth.ts
 import { NextFunction, Request, Response } from "express";
 import { ApiError } from "../utils/ApiError";
 import { verifyAccessToken } from "../utils/jwt";
+import { AccessTokenPayload } from "../types";
 
 /**
  * Requires a valid "Authorization: Bearer <token>" header.
@@ -15,7 +17,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const token = header.slice("Bearer ".length).trim();
   try {
     const payload = verifyAccessToken(token);
-    req.user = payload;
+    req.user = payload as AccessTokenPayload;
     next();
   } catch {
     next(ApiError.unauthorized("Invalid or expired access token"));
@@ -32,7 +34,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   if (header && header.startsWith("Bearer ")) {
     const token = header.slice("Bearer ".length).trim();
     try {
-      req.user = verifyAccessToken(token);
+      req.user = verifyAccessToken(token) as AccessTokenPayload;
     } catch {
       // Ignore invalid tokens for optional auth
     }
