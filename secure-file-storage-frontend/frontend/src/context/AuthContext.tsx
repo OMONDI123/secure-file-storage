@@ -17,21 +17,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // On first load, try to silently refresh using the httpOnly cookie
-  // so a page reload doesn't force the user to log in again.
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.post("/api/auth/refresh");
-        setAccessToken(res.data.accessToken);
-        setUser(res.data.user);
-      } catch {
-        setAccessToken(null);
-        setUser(null);
-      } finally {
+    let isMounted = true;
+    let timeoutId: ReturnType<typeof setTimeout>; // ✅ Fixed type
+
+    // Set a timeout to prevent infinite loading
+    timeoutId = setTimeout(() => {
+      if (isMounted && isLoading) {
+        console.log('[Auth] Refresh timeout - continuing without auth');
         setIsLoading(false);
       }
+    }, 5000);
+
+    (async () => {
+      try {
+        console.log('[Auth] Attempting to refresh token...');
+        const res = await api.post("/api/auth/refresh");
+        if (isMounted) {
+          setAccessToken(res.data.accessToken);
+          setUser(res.data.user);
+          console.log('[Auth] Token refreshed successfully');
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.log('[Auth] No valid session, user not logged in');
+          setAccessToken(null);
+          setUser(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          clearTimeout(timeoutId);
+        }
+      }
     })();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const register = useCallback(async (email: string, password: string, name: string) => {

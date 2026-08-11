@@ -5,7 +5,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://secure
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, // send the httpOnly refresh-token cookie
+  withCredentials: true,
 });
 
 let accessToken: string | null = null;
@@ -19,21 +19,16 @@ export function getAccessToken() {
 }
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // Skip adding auth header for public endpoints
   const isPublicEndpoint = config.url?.includes('/api/files/public/');
+  const isRefreshEndpoint = config.url?.includes('/api/auth/refresh');
   
-  // Only add auth token if:
-  // 1. We have a token AND
-  // 2. It's NOT a public endpoint
-  if (accessToken && !isPublicEndpoint) {
+  if (accessToken && !isPublicEndpoint && !isRefreshEndpoint) {
     config.headers.set("Authorization", `Bearer ${accessToken}`);
   }
   
   return config;
 });
 
-// Queue concurrent requests while a single refresh call is in flight,
-// so a burst of 401s doesn't trigger a burst of refresh calls.
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -60,15 +55,16 @@ api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
-    const isAuthRoute = original?.url?.includes("/api/auth/login") || original?.url?.includes("/api/auth/register");
+    const isAuthRoute = original?.url?.includes("/api/auth/login") || 
+                        original?.url?.includes("/api/auth/register");
     const isPublicEndpoint = original?.url?.includes('/api/files/public/');
+    const isRefreshEndpoint = original?.url?.includes('/api/auth/refresh');
 
-    // Skip refresh logic for public endpoints
-    if (isPublicEndpoint) {
+    if (isPublicEndpoint || isRefreshEndpoint || isAuthRoute) {
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 401 && original && !original._retry && !isAuthRoute) {
+    if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
       const newToken = await refreshAccessToken();
       if (newToken) {
@@ -83,7 +79,7 @@ api.interceptors.response.use(
 
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong. Please try again."): string {
   if (axios.isAxiosError(err)) {
-    const message = err.response?.data?.error?.message;
+    const message = err.response?.data?.error?.message || err.response?.data?.message;
     if (typeof message === "string") return message;
   }
   return fallback;
