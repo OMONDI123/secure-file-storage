@@ -16,9 +16,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitAny": true,
-    "strictNullChecks": true,
-    "types": ["node", "express", "cors", "compression", "morgan", "cookie-parser", "pg", "bcryptjs", "jsonwebtoken", "multer", "uuid"],
-    "typeRoots": ["./node_modules/@types", "./src/types"]
+    "strictNullChecks": true
   },
   "include": ["src/**/*.ts"],
   "exclude": [
