@@ -17,8 +17,18 @@
     "noUnusedParameters": false,
     "noImplicitAny": true,
     "strictNullChecks": true,
-    "types": ["node", "express", "cors", "compression", "morgan", "cookie-parser", "pg", "bcryptjs", "jsonwebtoken", "multer", "uuid"]
+    "types": ["node", "express", "cors", "compression", "morgan", "cookie-parser", "pg", "bcryptjs", "jsonwebtoken", "multer", "uuid"],
+    "typeRoots": ["./node_modules/@types", "./src/types"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "storage"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "storage",
+    "tests",
+    "**/*.test.ts",
+    "**/*.test.js",
+    "**/test-*.ts",
+    "**/test-*.js"
+  ]
 }

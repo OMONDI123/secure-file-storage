@@ -2,12 +2,14 @@ const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const dotenv = require("dotenv");
 const path = require("path");
 
-// Load .env from the project root
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Load .env from the backend root
+const envPath = path.resolve(__dirname, '../.env');
+console.log("Loading .env from:", envPath);
+dotenv.config({ path: envPath });
 
 console.log("Testing S3 connection...");
-console.log("Bucket:", process.env.AWS_S3_BUCKET_NAME);
-console.log("Region:", process.env.AWS_REGION);
+console.log("Bucket:", process.env.AWS_S3_BUCKET_NAME || "❌ Missing");
+console.log("Region:", process.env.AWS_REGION || "❌ Missing");
 console.log("Access Key ID:", process.env.AWS_ACCESS_KEY_ID ? "✅ Set" : "❌ Missing");
 console.log("Secret Access Key:", process.env.AWS_SECRET_ACCESS_KEY ? "✅ Set" : "❌ Missing");
 
@@ -31,11 +33,7 @@ async function testS3Connection() {
     const response = await s3Client.send(command);
     console.log("✅ S3 connection successful!");
     console.log("📁 Bucket contents:", response.Contents?.length || 0, "files found");
-    
-    if (response.Contents && response.Contents.length > 0) {
-      console.log("📄 First file:", response.Contents[0].Key);
-    }
-  } catch (error) {
+  } catch (error: any) {
     console.error("❌ S3 connection failed:", error.message);
     if (error.name === "AccessDenied") {
       console.error("🔒 Access Denied - Check IAM permissions");

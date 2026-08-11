@@ -49,13 +49,25 @@ function isAllowedMime(mime: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
 }
 
-// S3 Storage Configuration
+// Type definition for multer-s3 file
+interface MulterS3File extends Express.Multer.File {
+  key: string;
+  location?: string;
+  etag?: string;
+  bucket?: string;
+}
+
+// S3 Storage Configuration with proper types
 const s3Storage = multerS3({
   s3: s3Client,
   bucket: env.AWS_S3_BUCKET_NAME,
   acl: "private",
   contentType: multerS3.AUTO_CONTENT_TYPE,
-  key: (_req, file, cb) => {
+  key: (
+    _req: Express.Request,
+    file: Express.Multer.File,
+    cb: (error: Error | null, key?: string) => void
+  ) => {
     const ext = path.extname(file.originalname).toLowerCase();
     const safeExt = ALLOWED_EXTENSIONS.has(ext) ? ext : '';
     const uniqueId = uuidv4();
@@ -66,7 +78,11 @@ const s3Storage = multerS3({
 });
 
 // File filter with validation
-const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (
+  _req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
   const ext = path.extname(file.originalname).toLowerCase();
 
   if (hasDoubleExtension(file.originalname)) {
@@ -89,3 +105,6 @@ export const upload = multer({
     files: 1,
   },
 });
+
+// Export the S3 file type for use in controllers
+export type { MulterS3File };

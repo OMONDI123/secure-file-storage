@@ -62,8 +62,11 @@ export const listFiles = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getFile = asyncHandler(async (req: Request, res: Response) => {
-  const { file, signedUrl } = await fileService.getFileForAccess(req.params.id, req.user?.sub);
-  res.status(200).json({ file: serializeFile(file, req, signedUrl) });
+  // FIX: Destructure correctly - getFileForAccess returns { ...file, signedUrl }
+  const fileWithSignedUrl = await fileService.getFileForAccess(req.params.id, req.user?.sub);
+  // Extract signedUrl and the rest of the file properties
+  const { signedUrl, ...file } = fileWithSignedUrl;
+  res.status(200).json({ file: serializeFile(file as FileRecord, req, signedUrl) });
 });
 
 export const updateVisibility = asyncHandler(async (req: Request, res: Response) => {
@@ -79,7 +82,9 @@ export const removeFile = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const downloadFile = asyncHandler(async (req: Request, res: Response) => {
-  const { file, signedUrl } = await fileService.getFileForAccess(req.params.id, req.user?.sub);
+  // FIX: Destructure correctly
+  const fileWithSignedUrl = await fileService.getFileForAccess(req.params.id, req.user?.sub);
+  const { signedUrl } = fileWithSignedUrl;
   res.redirect(signedUrl);
 });
 
