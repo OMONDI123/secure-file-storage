@@ -19,42 +19,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
-    let timeoutId: ReturnType<typeof setTimeout>; // ✅ Fixed type
 
-    // Set a timeout to prevent infinite loading
-    timeoutId = setTimeout(() => {
-      if (isMounted && isLoading) {
-        console.log('[Auth] Refresh timeout - continuing without auth');
-        setIsLoading(false);
-      }
-    }, 5000);
+    // Skip auth check on public pages (share links)
+    const isPublicPage = window.location.pathname.startsWith('/share/');
+    
+    if (isPublicPage) {
+      console.log('[Auth] Public page detected, skipping auth');
+      setIsLoading(false);
+      return;
+    }
 
+    // Only try to refresh token for protected pages
     (async () => {
       try {
-        console.log('[Auth] Attempting to refresh token...');
+        console.log('[Auth] Checking session...');
         const res = await api.post("/api/auth/refresh");
         if (isMounted) {
+          console.log('[Auth] Session restored');
           setAccessToken(res.data.accessToken);
           setUser(res.data.user);
-          console.log('[Auth] Token refreshed successfully');
         }
       } catch (error) {
         if (isMounted) {
-          console.log('[Auth] No valid session, user not logged in');
+          console.log('[Auth] No session, user not logged in');
           setAccessToken(null);
           setUser(null);
         }
       } finally {
         if (isMounted) {
           setIsLoading(false);
-          clearTimeout(timeoutId);
         }
       }
     })();
 
     return () => {
       isMounted = false;
-      clearTimeout(timeoutId);
     };
   }, []);
 
@@ -66,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.post("/api/auth/login", { email, password });
+    console.log('[Auth] Login successful');
     setAccessToken(res.data.accessToken);
     setUser(res.data.user);
   }, []);

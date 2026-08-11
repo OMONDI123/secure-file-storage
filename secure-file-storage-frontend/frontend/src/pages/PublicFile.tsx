@@ -25,12 +25,6 @@ export default function PublicFile() {
       try {
         const fileData = await getPublicFile(token);
         console.log('[PublicFile] File data received:', fileData);
-        
-        // Validate the file data
-        if (!fileData || !fileData.id) {
-          throw new Error('Invalid file data received');
-        }
-        
         setFile(fileData);
       } catch (err) {
         console.error('[PublicFile] Error:', err);
@@ -100,15 +94,12 @@ export default function PublicFile() {
           </div>
           <a
             href={file.publicDownloadUrl ?? '#'}
+            target="_blank"
+            rel="noopener noreferrer"
             className="block w-full rounded-lg bg-primary-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700"
           >
             Download file
           </a>
-          {!file.publicDownloadUrl && (
-            <p className="mt-2 text-xs text-amber-600 text-center">
-              Download URL not available. Please try again later.
-            </p>
-          )}
         </div>
       </div>
     </div>
