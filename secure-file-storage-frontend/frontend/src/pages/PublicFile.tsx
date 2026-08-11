@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getPublicFile } from "../api/files";
+import { getPublicFile, fetchPublicFileBlob, downloadPublicFile } from "../api/files";
 import { extractErrorMessage } from "../api/client";
 import { formatBytes, formatDate } from "../utils/format";
 import { FileTypeIcon } from "../utils/fileIcon";
+import { FilePreviewModal } from "../components/FilePreviewModal";
 import type { FileItem } from "../types";
 
 export default function PublicFile() {
   const { token } = useParams<{ token: string }>();
   const [file, setFile] = useState<FileItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -34,6 +38,19 @@ export default function PublicFile() {
       }
     })();
   }, [token]);
+
+  const handleDownload = async () => {
+    if (!token || !file) return;
+    setIsDownloading(true);
+    setDownloadError(null);
+    try {
+      await downloadPublicFile(token, file.originalName);
+    } catch (err) {
+      setDownloadError(extractErrorMessage(err, "Couldn't download this file."));
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -92,16 +109,41 @@ export default function PublicFile() {
               </p>
             </div>
           </div>
-          <a
-            href={file.publicDownloadUrl ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full rounded-lg bg-primary-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700"
-          >
-            Download file
-          </a>
+          {downloadError && (
+            <p className="mb-3 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+              {downloadError}
+            </p>
+          )}
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => setShowPreview(true)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+                <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.7" />
+              </svg>
+              Preview
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700 disabled:opacity-60"
+            >
+              {isDownloading ? "Downloading…" : "Download"}
+            </button>
+          </div>
         </div>
       </div>
+
+      {showPreview && file && token && (
+        <FilePreviewModal
+          file={file}
+          fetchBlob={() => fetchPublicFileBlob(token)}
+          onDownload={handleDownload}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
     </div>
   );
 }

@@ -71,3 +71,25 @@ export async function downloadOwnedFile(file: FileItem): Promise<void> {
   link.remove();
   window.URL.revokeObjectURL(url);
 }
+
+export async function fetchOwnedFileBlob(file: FileItem): Promise<Blob> {
+  const res = await api.get(`/api/files/${file.id}/download`, { responseType: "blob" });
+  return res.data as Blob;
+}
+
+export async function fetchPublicFileBlob(token: string): Promise<Blob> {
+  const res = await api.get(`/api/files/public/${token}/download`, { responseType: "blob" });
+  return res.data as Blob;
+}
+
+export async function downloadPublicFile(token: string, originalName: string): Promise<void> {
+  const blob = await fetchPublicFileBlob(token);
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = originalName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}

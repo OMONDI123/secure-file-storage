@@ -3,8 +3,10 @@ import type { FileItem } from "../types";
 import { StatusStamp } from "./StatusStamp";
 import { FileTypeIcon } from "../utils/fileIcon";
 import { formatBytes, formatDate } from "../utils/format";
-import { deleteFile, setVisibility, downloadOwnedFile } from "../api/files";
+import { deleteFile, setVisibility, downloadOwnedFile, fetchOwnedFileBlob } from "../api/files";
 import { extractErrorMessage } from "../api/client";
+import { FilePreviewModal } from "./FilePreviewModal";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
   files: FileItem[];
@@ -16,6 +18,8 @@ export function FileLedger({ files, onChanged, onDeleted }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<FileItem | null>(null);
 
   const handleToggle = async (file: FileItem) => {
     setBusyId(file.id);
@@ -30,13 +34,15 @@ export function FileLedger({ files, onChanged, onDeleted }: Props) {
     }
   };
 
-  const handleDelete = async (file: FileItem) => {
-    if (!confirm(`Permanently delete "${file.originalName}"? This can't be undone.`)) return;
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const file = pendingDelete;
     setBusyId(file.id);
     setError(null);
     try {
       await deleteFile(file.id);
       onDeleted(file.id);
+      setPendingDelete(null);
     } catch (err) {
       setError(extractErrorMessage(err, "Couldn't delete this file."));
     } finally {
@@ -106,6 +112,16 @@ export function FileLedger({ files, onChanged, onDeleted }: Props) {
               <td className="px-5 py-3">
                 <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                   <button
+                    onClick={() => setPreviewFile(file)}
+                    title="Preview"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-primary-50 hover:text-primary-600"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.7" />
+                    </svg>
+                  </button>
+                  <button
                     onClick={() => downloadOwnedFile(file)}
                     title="Download"
                     className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-primary-50 hover:text-primary-600"
@@ -127,7 +143,7 @@ export function FileLedger({ files, onChanged, onDeleted }: Props) {
                     </button>
                   )}
                   <button
-                    onClick={() => handleDelete(file)}
+                    onClick={() => setPendingDelete(file)}
                     disabled={busyId === file.id}
                     title="Delete"
                     className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
@@ -142,6 +158,30 @@ export function FileLedger({ files, onChanged, onDeleted }: Props) {
           ))}
         </tbody>
       </table>
+
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          fetchBlob={() => fetchOwnedFileBlob(previewFile)}
+          onDownload={() => downloadOwnedFile(previewFile)}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this file?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.originalName}" will be permanently deleted. This can't be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        danger
+        isBusy={busyId === pendingDelete?.id}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
