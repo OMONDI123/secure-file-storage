@@ -12,7 +12,7 @@ export interface FileItem {
   checksumSha256: string | null;
   isPublic: boolean;
   shareUrl: string | null;
-  publicDownloadUrl: string | null;
+  publicDownloadUrl: string | null; 
   downloadUrl: string;
   createdAt: string;
   updatedAt: string;

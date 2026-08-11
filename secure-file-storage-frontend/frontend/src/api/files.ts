@@ -36,15 +36,30 @@ export async function deleteFile(fileId: string): Promise<void> {
 }
 
 export async function getPublicFile(token: string): Promise<FileItem> {
+  console.log(`[API] Fetching public file for token: ${token}`);
+  
   const res = await api.get(`/api/files/public/${token}`);
-  return res.data.file;
+  console.log('[API] Public file response:', res.data);
+  
+  // The backend returns { file: { ... } }
+  const fileData = res.data.file;
+  
+  // Ensure the file object has the correct structure
+  return {
+    id: fileData.id,
+    originalName: fileData.originalName,
+    mimeType: fileData.mimeType,
+    sizeBytes: fileData.sizeBytes,
+    checksumSha256: fileData.checksumSha256 || null,
+    isPublic: fileData.isPublic,
+    shareUrl: fileData.shareUrl || null,
+    publicDownloadUrl: fileData.publicDownloadUrl || null,
+    downloadUrl: fileData.downloadUrl || '',
+    createdAt: fileData.createdAt,
+    updatedAt: fileData.updatedAt,
+  };
 }
 
-/**
- * Downloads a file the current user owns. A plain <a href> can't carry the
- * Authorization header, so this fetches the bytes as a blob (with the JWT
- * attached by the axios interceptor) and triggers a save via an object URL.
- */
 export async function downloadOwnedFile(file: FileItem): Promise<void> {
   const res = await api.get(`/api/files/${file.id}/download`, { responseType: "blob" });
   const url = window.URL.createObjectURL(res.data as Blob);

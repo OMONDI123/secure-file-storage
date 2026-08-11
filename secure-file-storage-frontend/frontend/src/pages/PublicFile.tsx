@@ -13,17 +13,61 @@ export default function PublicFile() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      console.log('[PublicFile] No token provided');
+      setIsLoading(false);
+      return;
+    }
+
+    console.log('[PublicFile] Fetching file for token:', token);
+
     (async () => {
       try {
-        setFile(await getPublicFile(token));
+        const fileData = await getPublicFile(token);
+        console.log('[PublicFile] File data received:', fileData);
+        
+        // Validate the file data
+        if (!fileData || !fileData.id) {
+          throw new Error('Invalid file data received');
+        }
+        
+        setFile(fileData);
       } catch (err) {
+        console.error('[PublicFile] Error:', err);
         setError(extractErrorMessage(err, "This shared file could not be found."));
       } finally {
         setIsLoading(false);
       }
     })();
   }, [token]);
+
+  if (isLoading) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center px-4">
+        <p className="text-center text-sm text-slate-500">Retrieving shared file…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center px-4">
+        <div className="rounded-2xl border border-rose-100 bg-white p-6 text-center shadow-sm">
+          <p className="text-sm text-rose-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!file) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center px-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-sm text-slate-500">File not found</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
@@ -40,37 +84,32 @@ export default function PublicFile() {
           </div>
         </div>
 
-        {isLoading && <p className="text-center text-sm text-slate-500">Retrieving shared file…</p>}
-
-        {error && (
-          <div className="rounded-2xl border border-rose-100 bg-white p-6 text-center shadow-sm">
-            <p className="text-sm text-rose-600">{error}</p>
-          </div>
-        )}
-
-        {file && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5">
-            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
-              Shared file
-            </span>
-            <div className="mb-4 flex items-center gap-3">
-              <FileTypeIcon mimeType={file.mimeType} name={file.originalName} size={42} />
-              <div className="min-w-0">
-                <h1 className="truncate font-display text-lg font-bold text-slate-900">{file.originalName}</h1>
-                <p className="text-xs text-slate-400">
-                  {formatBytes(file.sizeBytes)} · uploaded {formatDate(file.createdAt)}
-                </p>
-              </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5">
+          <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
+            Shared file
+          </span>
+          <div className="mb-4 flex items-center gap-3">
+            <FileTypeIcon mimeType={file.mimeType} name={file.originalName} size={42} />
+            <div className="min-w-0">
+              <h1 className="truncate font-display text-lg font-bold text-slate-900">{file.originalName}</h1>
+              <p className="text-xs text-slate-400">
+                {formatBytes(file.sizeBytes)} · uploaded {formatDate(file.createdAt)}
+              </p>
             </div>
-            <a
-              href={file.publicDownloadUrl ?? undefined}
-              className="block w-full rounded-lg bg-primary-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700"
-            >
-              Download file
-            </a>
           </div>
-        )}
+          <a
+            href={file.publicDownloadUrl ?? '#'}
+            className="block w-full rounded-lg bg-primary-600 px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700"
+          >
+            Download file
+          </a>
+          {!file.publicDownloadUrl && (
+            <p className="mt-2 text-xs text-amber-600 text-center">
+              Download URL not available. Please try again later.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
