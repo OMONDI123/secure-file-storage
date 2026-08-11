@@ -62,7 +62,25 @@ const s3Storage = multerS3({
   s3: s3Client,
   bucket: env.AWS_S3_BUCKET_NAME,
   acl: "private",
-  contentType: "auto", // ✅ Fixed: Use string literal instead of AUTO_CONTENT_TYPE
+  // ✅ Use a function for contentType to fix type error
+  contentType: (req: any, file: any, cb: (err: any, mime?: string) => void) => {
+    // Auto-detect content type based on file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mimeTypes: { [key: string]: string } = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.pdf': 'application/pdf',
+      '.txt': 'text/plain',
+      '.json': 'application/json',
+      // Add more as needed
+    };
+    const mime = mimeTypes[ext] || 'application/octet-stream';
+    cb(null, mime);
+  },
   key: (
     _req: Express.Request,
     file: Express.Multer.File,

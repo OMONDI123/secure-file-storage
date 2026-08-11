@@ -6,7 +6,7 @@ declare module 'multer-s3' {
     s3: S3Client;
     bucket: string | ((req: any, file: any, cb: (err: any, bucket: string) => void) => void);
     acl?: string;
-    contentType?: (req: any, file: any, cb: (err: any, mime?: string) => void) => void;
+    contentType?: ((req: any, file: any, cb: (err: any, mime?: string) => void) => void) | string; // ✅ Allow string
     key?: (req: any, file: any, cb: (err: any, key?: string) => void) => void;
     metadata?: (req: any, file: any, cb: (err: any, metadata?: any) => void) => void;
     cacheControl?: string;
@@ -18,6 +18,4 @@ declare module 'multer-s3' {
 
   function multerS3(options: MulterS3Options): StorageEngine;
   export = multerS3;
-
-  export const AUTO_CONTENT_TYPE: string;
 }
